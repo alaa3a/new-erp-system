@@ -118,7 +118,7 @@ class DatabaseWrapper {
         const result = fn();
         d.run('COMMIT');
         state.inTransaction = false;
-        saveDb();
+        flushPendingSave();
         return result;
       } catch (err) {
         state.inTransaction = false;
@@ -131,16 +131,40 @@ class DatabaseWrapper {
 
 const db = new DatabaseWrapper();
 
-function saveDb(): void {
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+const SAVE_DEBOUNCE_MS = 100;
+
+function persistDb(): void {
   const state = getState();
   if (!state.db) return;
   const data = state.db.export();
   const buffer = Buffer.from(data);
   writeFileSync(DB_PATH, buffer);
-  // sql.js export() recreates the underlying connection, which wipes
-  // connection-local pragmas — re-enable FK enforcement so it survives
-  // every save (Critical Bug Fix #1).
   try { state.db.exec('PRAGMA foreign_keys = ON'); } catch { /* ignore */ }
+}
+
+function flushPendingSave(): void {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+    persistDb();
+  }
+}
+
+function scheduleSave(): void {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    saveTimeout = null;
+    persistDb();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+function saveDb(): void {
+  scheduleSave();
+}
+
+if (typeof process !== 'undefined') {
+  process.on('exit', () => flushPendingSave());
 }
 
 async function ensureDb(): Promise<void> {
@@ -998,4 +1022,4 @@ function resetForTest(): void {
   state.inTransaction = false;
 }
 
-export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest };
+export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave };
