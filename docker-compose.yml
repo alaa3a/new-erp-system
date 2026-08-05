@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  erp:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - SESSION_SECRET=${SESSION_SECRET}
+    volumes:
+      - erp-data:/app/data
+volumes:
+  erp-data:
