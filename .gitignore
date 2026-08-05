@@ -3,6 +3,9 @@ node_modules/
 # Next.js build output
 .next/
 
+# Environment files
+.env
+
 # Databases & backups
 *.sqlite
 *.sqlite.bak

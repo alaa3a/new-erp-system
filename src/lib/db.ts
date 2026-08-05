@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import path from 'path';
 import { hashPassword } from '@/lib/auth/password';
 
-const DB_PATH = 'erp.sqlite';
+const DB_PATH = process.env.DATABASE_PATH || 'erp.sqlite';
 
 // In Next.js dev mode every route handler is compiled into its own module
 // instance, so module-level state here would be duplicated per route — each
@@ -21,7 +21,7 @@ interface DbState {
 }
 
 function getState(): DbState {
-  const g = globalThis as any;
+  const g = globalThis as Record<string, unknown>;
   if (!g[GLOBAL_KEY]) {
     g[GLOBAL_KEY] = { db: null, initialized: false, initPromise: null, inTransaction: false };
   }
@@ -34,46 +34,51 @@ function ensureSync(): SqlJsDatabase {
   return state.db;
 }
 
+/** A single row of results from the (loosely typed) sql.js engine. */
+export type SqlRow = Record<string, unknown>;
+
+type SqlValue = number | string | Uint8Array | null;
+
 /** Convert undefined values to null for sql.js compatibility */
-function sanitizeParams(params: any[]): any[] {
+function sanitizeParams(params: unknown[]): unknown[] {
   return params.map(p => p === undefined ? null : p);
 }
 
 class Statement {
   private sql: string;
-  private params: any[];
-  constructor(sql: string, params: any[] = []) {
+  private params: unknown[];
+  constructor(sql: string, params: unknown[] = []) {
     this.sql = sql;
     this.params = params;
   }
-  get(...bindParams: any[]): any | undefined {
+  get<T extends object = SqlRow>(...bindParams: unknown[]): T | undefined {
     const db = ensureSync();
     const stmt = db.prepare(this.sql);
     try {
       stmt.bind(sanitizeParams(bindParams.length > 0 ? bindParams : this.params));
       if (stmt.step()) {
-        return stmt.getAsObject();
+        return stmt.getAsObject() as T;
       }
       return undefined;
     } finally {
       stmt.free();
     }
   }
-  all(...bindParams: any[]): any[] {
+  all<T extends object = SqlRow>(...bindParams: unknown[]): T[] {
     const db = ensureSync();
     const stmt = db.prepare(this.sql);
-    const rows: any[] = [];
+    const rows: T[] = [];
     try {
       stmt.bind(sanitizeParams(bindParams.length > 0 ? bindParams : this.params));
       while (stmt.step()) {
-        rows.push(stmt.getAsObject());
+        rows.push(stmt.getAsObject() as T);
       }
       return rows;
     } finally {
       stmt.free();
     }
   }
-  run(...bindParams: any[]): { changes: number; lastInsertRowid: number } {
+  run(...bindParams: unknown[]): { changes: number; lastInsertRowid: number } {
     const db = ensureSync();
     const params = sanitizeParams(bindParams.length > 0 ? bindParams : this.params);
     db.run(this.sql, params);
@@ -96,8 +101,8 @@ class DatabaseWrapper {
     saveDb();
   }
 
-  transaction<T>(fn: (...args: any[]) => T): (...args: any[]) => T {
-    return (...args: any[]) => {
+  transaction<T>(fn: () => T): () => T {
+    return () => {
       const state = getState();
       const d = ensureSync();
       // Re-entrant: a transaction called inside an active transaction joins the
@@ -105,12 +110,12 @@ class DatabaseWrapper {
       // stock helpers are called from within service transactions, so without
       // this they would crash with "cannot start a transaction within a transaction".
       if (state.inTransaction) {
-        return fn(...args);
+        return fn();
       }
       d.run('BEGIN TRANSACTION');
       state.inTransaction = true;
       try {
-        const result = fn(...args);
+        const result = fn();
         d.run('COMMIT');
         state.inTransaction = false;
         saveDb();
@@ -146,10 +151,11 @@ async function ensureDb(): Promise<void> {
     return;
   }
   state.initPromise = (async () => {
-    // The runtime accepts a config object with locateFile, but types don't include it
-    const SQL = await (initSqlJs as any)({
+    // The runtime accepts a config object with locateFile (declared in our
+    // sql.js type shim) so the WASM binary resolves from node_modules.
+    const SQL = await initSqlJs({
       locateFile: (file: string) => path.join(process.cwd(), 'node_modules/sql.js/dist', file),
-    }) as Awaited<ReturnType<typeof initSqlJs>>;
+    });
     if (existsSync(DB_PATH)) {
       const fileBuffer = readFileSync(DB_PATH);
       state.db = new SQL.Database(fileBuffer);
@@ -685,66 +691,66 @@ function initDb() {
       (5, '90+ days', 91, 999999, 5, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z');
   `);
   // Migration: add purchaseOrderId to invoice if missing from existing DB
-  try { db.exec('ALTER TABLE invoice ADD COLUMN purchaseOrderId INTEGER REFERENCES purchase_order(id)'); } catch (e) { /* column may already exist */ }
+  try { db.exec('ALTER TABLE invoice ADD COLUMN purchaseOrderId INTEGER REFERENCES purchase_order(id)'); } catch { /* column may already exist */ }
   // Migration: fix child accounts incorrectly marked as system accounts
-  try { db.exec('UPDATE account SET isSystemAccount = 0 WHERE parentId IS NOT NULL AND isSystemAccount = 1'); } catch (e) { /* ignore */ }
+  try { db.exec('UPDATE account SET isSystemAccount = 0 WHERE parentId IS NOT NULL AND isSystemAccount = 1'); } catch { /* ignore */ }
   // Migration: tax groups support (tax_code)
-  try { db.exec('ALTER TABLE tax_code ADD COLUMN isGroup INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE tax_code ADD COLUMN filingPeriod TEXT NOT NULL DEFAULT \'monthly\''); } catch (e) { /* column may already exist */ }
+  try { db.exec('ALTER TABLE tax_code ADD COLUMN isGroup INTEGER NOT NULL DEFAULT 0'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE tax_code ADD COLUMN filingPeriod TEXT NOT NULL DEFAULT \'monthly\''); } catch { /* column may already exist */ }
   // Migration: link entries to categories
   // NOTE: the ALTER for entry omits the REFERENCES clause — adding a column
   // with a foreign key is version-dependent in SQLite and would silently fail
   // on some builds, leaving existing DBs without the column.
-  try { db.exec('ALTER TABLE entry ADD COLUMN categoryId INTEGER'); } catch (e) { /* column may already exist */ }
+  try { db.exec('ALTER TABLE entry ADD COLUMN categoryId INTEGER'); } catch { /* column may already exist */ }
   // Migration: drop the unused type column that was briefly added to entry_category
-  try { db.exec('ALTER TABLE entry_category DROP COLUMN type'); } catch (e) { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE entry_category DROP COLUMN type'); } catch { /* column may already be gone */ }
   // Migration: remove the entry `type` column (every entry is now a journal entry)
-  try { db.exec('ALTER TABLE entry DROP COLUMN type'); } catch (e) { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE entry DROP COLUMN type'); } catch { /* column may already be gone */ }
   // Migration: posting profiles carry a default entry category for auto-generated entries
-  try { db.exec('ALTER TABLE posting_profile ADD COLUMN entryCategoryId INTEGER'); } catch (e) { /* column may already exist */ }
+  try { db.exec('ALTER TABLE posting_profile ADD COLUMN entryCategoryId INTEGER'); } catch { /* column may already exist */ }
   // Migration: drop the removed partner-role flag column (the role is now derived from the partner link filter)
-  try { db.exec('ALTER TABLE account DROP COLUMN partnerRole'); } catch (e) { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE account DROP COLUMN partnerRole'); } catch { /* column may already be gone */ }
   // Migration: dynamic account links (cost center | partner | employee) — polymorphic linkId + linkType discriminator
-  try { db.exec('ALTER TABLE account ADD COLUMN linkType TEXT'); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE account ADD COLUMN linkId INTEGER'); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE account ADD COLUMN linkPartnerFilter TEXT'); } catch (e) { /* column may already exist */ }
+  try { db.exec('ALTER TABLE account ADD COLUMN linkType TEXT'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE account ADD COLUMN linkId INTEGER'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE account ADD COLUMN linkPartnerFilter TEXT'); } catch { /* column may already exist */ }
   // Backfill: existing costCenterId links become linkType='cost_center' (the legacy column stays in sync during transition)
   try {
     db.exec("UPDATE account SET linkType='cost_center', linkId=costCenterId WHERE costCenterId IS NOT NULL AND linkType IS NULL");
-  } catch (e) { /* ignore */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_account_link ON account(linkType, linkId)'); } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_account_link ON account(linkType, linkId)'); } catch { /* ignore */ }
   // Migration: drop dead posting-profile columns (VAT output/input + inventory adjustment — no consumers)
-  try { db.exec('ALTER TABLE posting_profile DROP COLUMN vatOutputCode'); } catch (e) { /* column may already be gone */ }
-  try { db.exec('ALTER TABLE posting_profile DROP COLUMN vatInputCode'); } catch (e) { /* column may already be gone */ }
-  try { db.exec('ALTER TABLE posting_profile DROP COLUMN adjustmentAccountCode'); } catch (e) { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE posting_profile DROP COLUMN vatOutputCode'); } catch { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE posting_profile DROP COLUMN vatInputCode'); } catch { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE posting_profile DROP COLUMN adjustmentAccountCode'); } catch { /* column may already be gone */ }
   // Migration: entry line types (normal / tax / payment) + supplier document fields
-  try { db.exec("ALTER TABLE entry_line ADD COLUMN lineType TEXT NOT NULL DEFAULT 'normal'"); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE entry_line ADD COLUMN supplierName TEXT'); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE entry_line ADD COLUMN supplierTaxId TEXT'); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE entry_line ADD COLUMN invoiceNumber TEXT'); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE entry_line ADD COLUMN invoiceDate TEXT'); } catch (e) { /* column may already exist */ }
+  try { db.exec("ALTER TABLE entry_line ADD COLUMN lineType TEXT NOT NULL DEFAULT 'normal'"); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE entry_line ADD COLUMN supplierName TEXT'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE entry_line ADD COLUMN supplierTaxId TEXT'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE entry_line ADD COLUMN invoiceNumber TEXT'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE entry_line ADD COLUMN invoiceDate TEXT'); } catch { /* column may already exist */ }
   // Migration: entry-line employee dimension + captured user-defined tax-detail JSON (Phase 3/4)
-  try { db.exec('ALTER TABLE entry_line ADD COLUMN employeeId INTEGER'); } catch (e) { /* column may already exist */ }
-  try { db.exec('ALTER TABLE entry_line ADD COLUMN taxDetailsJson TEXT'); } catch (e) { /* column may already exist */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_employeeId ON entry_line(employeeId)'); } catch (e) { /* ignore */ }
+  try { db.exec('ALTER TABLE entry_line ADD COLUMN employeeId INTEGER'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE entry_line ADD COLUMN taxDetailsJson TEXT'); } catch { /* column may already exist */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_employeeId ON entry_line(employeeId)'); } catch { /* ignore */ }
   // Migration: tax types carry a dynamic details-field config (Phase 4)
-  try { db.exec('ALTER TABLE tax_code ADD COLUMN detailsConfig TEXT'); } catch (e) { /* column may already exist */ }
+  try { db.exec('ALTER TABLE tax_code ADD COLUMN detailsConfig TEXT'); } catch { /* column may already exist */ }
   // Indexes for the new reporting query paths
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_entryId ON entry_line(entryId)'); } catch (e) { /* ignore */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_vatCodeId ON entry_line(vatCodeId)'); } catch (e) { /* ignore */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_costCenterId ON entry_line(costCenterId)'); } catch (e) { /* ignore */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_businessPartnerId ON entry_line(businessPartnerId)'); } catch (e) { /* ignore */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_categoryId ON entry(categoryId)'); } catch (e) { /* ignore */ }
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_status_date ON entry(status, entryDate)'); } catch (e) { /* ignore */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_entryId ON entry_line(entryId)'); } catch { /* ignore */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_vatCodeId ON entry_line(vatCodeId)'); } catch { /* ignore */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_costCenterId ON entry_line(costCenterId)'); } catch { /* ignore */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_line_businessPartnerId ON entry_line(businessPartnerId)'); } catch { /* ignore */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_categoryId ON entry(categoryId)'); } catch { /* ignore */ }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_entry_status_date ON entry(status, entryDate)'); } catch { /* ignore */ }
   // Migration: purge orphaned per-type entry document sequences (only entry_journal remains)
   try {
     db.exec("DELETE FROM document_sequence WHERE documentType IN ('entry_payment', 'entry_receipt', 'entry_adjustment', 'entry_closing')");
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   // Migration: backfill per-category entry sequences for existing categories
   try {
     const categories = db.prepare('SELECT id, code FROM entry_category').all() as { id: number; code: string }[];
     for (const c of categories) ensureCategorySequence(c.id, c.code);
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   // Migration: permissions added after the initial seed — INSERT OR IGNORE so
   // existing DBs gain them without touching the seeded rows.
   try {
@@ -756,17 +762,17 @@ function initDb() {
     const stmt = db.prepare('INSERT OR IGNORE INTO permission (key, module, action, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
     const now = new Date().toISOString();
     for (const [key, module, action, desc] of extraPerms) stmt.run(key, module, action, desc, now, now);
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   // Migration: the seeded admin keeps ALL permissions (existing DBs were seeded
   // with an empty permissionIds list — grant them now so permission checks work).
   try {
-    const admin = db.prepare("SELECT id FROM users WHERE email = 'admin@erp.local'").get() as any;
+    const admin = db.prepare("SELECT id FROM users WHERE email = 'admin@erp.local'").get<{ id: number }>();
     if (admin) {
-      const allPerms = db.prepare('SELECT id FROM permission').all() as { id: number }[];
+      const allPerms = db.prepare('SELECT id FROM permission').all<{ id: number }>();
       db.prepare('UPDATE users SET permissionIds = ?, updatedAt = ? WHERE id = ?')
         .run(JSON.stringify(allPerms.map(p => p.id)), new Date().toISOString(), admin.id);
     }
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   saveDb();
 }
 
@@ -794,16 +800,24 @@ function ensureCategorySequence(categoryId: number, code: string): void {
   ensureSequence(`entry_cat_${categoryId}`, `JE-${sanitizeCategoryCode(code)}-`, 6);
 }
 
+interface DocumentSequenceRow {
+  id: number;
+  prefix: string;
+  nextNumber: number;
+  padding: number;
+}
+
 function getNextSequence(documentType: string): string {
   ensureSequence(documentType, documentType.toUpperCase() + '-', 6);
-  const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(documentType) as any;
+  const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get<DocumentSequenceRow>(documentType);
+  if (!seq) throw new Error(`Sequence not found for document type: ${documentType}`);
   const padded = seq.prefix + String(seq.nextNumber).padStart(seq.padding, '0');
   db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
   return padded;
 }
 
 function canUser(userPermissionIds: number[], permissionKey: string): boolean {
-  const perm = db.prepare('SELECT id FROM permission WHERE key = ?').get(permissionKey) as any;
+  const perm = db.prepare('SELECT id FROM permission WHERE key = ?').get<{ id: number }>(permissionKey);
   if (!perm) return false;
   return userPermissionIds.includes(perm.id);
 }
@@ -820,7 +834,7 @@ async function ensureInitialized(): Promise<void> {
 function seedInitialData() {
   initDb();
 
-  const userCount = (db.prepare('SELECT count(1) AS count FROM users').get() as any).count;
+  const userCount = db.prepare('SELECT count(1) AS count FROM users').get<{ count: number }>()?.count ?? 0;
   if (userCount === 0) {
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO users (email, passwordHash, firstName, lastName, permissionIds, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1)`).run(
@@ -903,18 +917,18 @@ function seedInitialData() {
   // Grant the seeded admin every permission. The admin user is created before
   // permissions are seeded (order above), so this sync runs after both exist.
   try {
-    const admin = db.prepare("SELECT id FROM users WHERE email = 'admin@erp.local'").get() as any;
+    const admin = db.prepare("SELECT id FROM users WHERE email = 'admin@erp.local'").get<{ id: number }>();
     if (admin) {
-      const allPerms = db.prepare('SELECT id FROM permission').all() as { id: number }[];
+      const allPerms = db.prepare('SELECT id FROM permission').all<{ id: number }>();
       db.prepare('UPDATE users SET permissionIds = ?, updatedAt = ? WHERE id = ?')
         .run(JSON.stringify(allPerms.map(p => p.id)), new Date().toISOString(), admin.id);
     }
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
 
   // Seed notifications for the admin user
-  const notifCount = (db.prepare('SELECT count(1) AS count FROM notification').get() as any).count;
+  const notifCount = db.prepare('SELECT count(1) AS count FROM notification').get<{ count: number }>()?.count ?? 0;
   if (notifCount === 0) {
-    const admin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@erp.local') as any;
+    const admin = db.prepare('SELECT id FROM users WHERE email = ?').get<{ id: number }>('admin@erp.local');
     const adminId = admin?.id || 1;
     const now = new Date().toISOString();
     const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
@@ -928,7 +942,7 @@ function seedInitialData() {
     notifStmt.run(adminId, 'warning', 'Tax Codes Setup', 'Reminder: Review and verify tax codes before processing invoices.', 'tax_code', 1, 0, twoDaysAgo);
   }
 
-  const acctCount = (db.prepare('SELECT count(1) AS count FROM account').get() as any).count;
+  const acctCount = db.prepare('SELECT count(1) AS count FROM account').get<{ count: number }>()?.count ?? 0;
   if (acctCount === 0) {
     const now = new Date().toISOString();
     // Level 1: Root type accounts with single-digit codes (Asset=1, Liability=2, Equity=3, Revenue=4, Expense=5)
