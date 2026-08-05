@@ -2,11 +2,15 @@ import { getCurrentUser } from './session'
 import { ensureInitialized } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { hasPermission } from './permissions'
+import { checkAuthRateLimit } from '@/lib/security/rateLimit'
 
 export async function requireAuth(request: Request): Promise<{ userId: number } | NextResponse> {
   // Auth reads the users table, so the DB must be loaded first. In the dev
   // server each route module has its own db state, so callers cannot rely on
   // a previous request having initialized it.
+  if (checkAuthRateLimit(request)) {
+    return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 })
+  }
   await ensureInitialized()
   const user = getCurrentUser(request)
   if (!user) {
@@ -16,6 +20,9 @@ export async function requireAuth(request: Request): Promise<{ userId: number } 
 }
 
 export async function requirePermission(request: Request, permissionKey: string): Promise<{ userId: number } | NextResponse> {
+  if (checkAuthRateLimit(request)) {
+    return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 })
+  }
   await ensureInitialized()
   const user = getCurrentUser(request)
   if (!user) {
