@@ -5,6 +5,7 @@ import { auditLogRepository } from '@/lib/repositories/userRepository';
 import { handleApiError } from '@/lib/utils/errors';
 import { ensureInitialized } from '@/lib/db';
 import { validate, createPurchaseOrderSchema } from '@/lib/validators';
+import { calculateLineTotal } from '@/lib/formatters/money';
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     const poId = purchaseOrderRepository.create({
       businessPartnerId, partnerName, orderDate, expectedDate,
       warehouseId, referenceNumber, notes,
-      createdBy: 'system',
+      createdBy: String(auth.userId),
     });
 
     if (lines && Array.isArray(lines)) {
@@ -45,7 +46,8 @@ export async function POST(request: NextRequest) {
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        const lineTotal = line.quantity * line.unitPrice * (1 - (line.discountPercent || 0) / 100);
+        // Integer-cents math — no float truncation (Critical Bug Fix #6)
+        const lineTotal = calculateLineTotal(line.quantity, line.unitPrice, line.discountPercent || 0);
 
         purchaseOrderRepository.addLine({
           poId, lineNumber: i + 1,

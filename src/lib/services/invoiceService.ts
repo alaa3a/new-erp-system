@@ -12,12 +12,14 @@ import { BusinessRuleError, NotFoundError } from '../utils/errors';
 
 export const invoiceService = {
   approveInvoice(invoiceId: number, userId: string): void {
-    const invoice = invoiceRepository.findById(invoiceId);
-    if (!invoice) throw new NotFoundError('Invoice', invoiceId);
-    if (invoice.status !== 'draft') throw new BusinessRuleError('Only draft invoices can be approved');
-    if (invoice.approvedBy) throw new BusinessRuleError('Invoice is already approved');
-
     const transaction = db.transaction(() => {
+      // Re-read inside the transaction so the status checks are atomic with the
+      // update — two concurrent approves cannot both pass (TOCTOU fix).
+      const invoice = invoiceRepository.findById(invoiceId);
+      if (!invoice) throw new NotFoundError('Invoice', invoiceId);
+      if (invoice.status !== 'draft') throw new BusinessRuleError('Only draft invoices can be approved');
+      if (invoice.approvedBy) throw new BusinessRuleError('Invoice is already approved');
+
       invoiceRepository.approve(invoiceId, userId);
 
       const allUsers = db.prepare('SELECT id FROM users WHERE isActive = 1').all() as { id: number }[];
@@ -59,7 +61,10 @@ export const invoiceService = {
 
       if (line.vatAmount > 0) {
         const taxType = line.vatCodeId ? taxCodeRepository.findById(line.vatCodeId) : null;
-        const vatAccount = taxType?.accountCode || (invoice.type === 'sales' || invoice.type === 'debit_note' ? '2100' : '2200');
+        // Fall back to the seeded VAT control accounts (202 VAT Output for
+        // sales/debit, 105 VAT Input for purchase/credit) — matches the seeded
+        // chart so posting never writes a dangling account code (Bug Fix #7).
+        const vatAccount = taxType?.accountCode || (invoice.type === 'sales' || invoice.type === 'debit_note' ? '202' : '105');
         if (invoice.type === 'sales' || invoice.type === 'debit_note') {
           entries.push({ accountCode: vatAccount, description: `VAT - ${line.description}`, debitAmount: 0, creditAmount: line.vatAmount, vatCodeId: line.vatCodeId });
         } else {
@@ -84,11 +89,13 @@ export const invoiceService = {
   },
 
   postInvoice(invoiceId: number, userId: string): void {
-    const invoice = invoiceRepository.findById(invoiceId);
-    if (!invoice) throw new NotFoundError('Invoice', invoiceId);
-    if (invoice.status !== 'draft') throw new BusinessRuleError('Only draft invoices can be posted');
-
     const transaction = db.transaction(() => {
+      // Re-read inside the transaction — the draft check is atomic with the
+      // update, so two concurrent posts cannot both pass (TOCTOU fix).
+      const invoice = invoiceRepository.findById(invoiceId);
+      if (!invoice) throw new NotFoundError('Invoice', invoiceId);
+      if (invoice.status !== 'draft') throw new BusinessRuleError('Only draft invoices can be posted');
+
       const { entries, stockMovements } = this.previewPosting(invoiceId);
 
       // Auto-generated entries get the posting profile's default entry category,
@@ -170,19 +177,23 @@ export const invoiceService = {
    * quick-pay flow). Guards against over-allocation so ageing stays correct.
    */
   applyPaymentAllocation(invoiceId: number, amount: number): void {
-    const invoice = invoiceRepository.findById(invoiceId);
-    if (!invoice) throw new NotFoundError('Invoice', invoiceId);
-    if (invoice.status === 'cancelled') throw new BusinessRuleError('Cannot pay cancelled invoice');
-    if (invoice.status === 'draft') throw new BusinessRuleError('Cannot pay an invoice that has not been posted');
+    const transaction = db.transaction(() => {
+      // Checks and updates are atomic — no over-payment races (Bug Fix #9).
+      const invoice = invoiceRepository.findById(invoiceId);
+      if (!invoice) throw new NotFoundError('Invoice', invoiceId);
+      if (invoice.status === 'cancelled') throw new BusinessRuleError('Cannot pay cancelled invoice');
+      if (invoice.status === 'draft') throw new BusinessRuleError('Cannot pay an invoice that has not been posted');
 
-    const remaining = invoice.totalAmount - invoice.paidAmount;
-    if (amount > remaining) {
-      throw new BusinessRuleError(`Payment amount (${amount}) exceeds the invoice remaining balance (${remaining})`);
-    }
+      const remaining = invoice.totalAmount - invoice.paidAmount;
+      if (amount > remaining) {
+        throw new BusinessRuleError(`Payment amount (${amount}) exceeds the invoice remaining balance (${remaining})`);
+      }
 
-    const newPaidAmount = invoice.paidAmount + amount;
-    invoiceRepository.updatePaidAmount(invoiceId, newPaidAmount);
-    invoiceRepository.updateStatus(invoiceId, newPaidAmount >= invoice.totalAmount ? 'paid' : newPaidAmount > 0 ? 'partial_paid' : 'posted');
+      const newPaidAmount = invoice.paidAmount + amount;
+      invoiceRepository.updatePaidAmount(invoiceId, newPaidAmount);
+      invoiceRepository.updateStatus(invoiceId, newPaidAmount >= invoice.totalAmount ? 'paid' : newPaidAmount > 0 ? 'partial_paid' : 'posted');
+    });
+    transaction();
   },
 
   /**
@@ -191,16 +202,19 @@ export const invoiceService = {
    * Blocks reversing below zero.
    */
   reversePaymentAllocation(invoiceId: number, amount: number): void {
-    const invoice = invoiceRepository.findById(invoiceId);
-    if (!invoice) throw new NotFoundError('Invoice', invoiceId);
-    if (invoice.status === 'cancelled') throw new BusinessRuleError('Cannot reverse a payment on a cancelled invoice');
+    const transaction = db.transaction(() => {
+      const invoice = invoiceRepository.findById(invoiceId);
+      if (!invoice) throw new NotFoundError('Invoice', invoiceId);
+      if (invoice.status === 'cancelled') throw new BusinessRuleError('Cannot reverse a payment on a cancelled invoice');
 
-    const newPaidAmount = invoice.paidAmount - amount;
-    if (newPaidAmount < 0) {
-      throw new BusinessRuleError(`Cannot reverse ${amount} — invoice paid amount is only ${invoice.paidAmount}`);
-    }
+      const newPaidAmount = invoice.paidAmount - amount;
+      if (newPaidAmount < 0) {
+        throw new BusinessRuleError(`Cannot reverse ${amount} — invoice paid amount is only ${invoice.paidAmount}`);
+      }
 
-    invoiceRepository.updatePaidAmount(invoiceId, newPaidAmount);
-    invoiceRepository.updateStatus(invoiceId, newPaidAmount >= invoice.totalAmount ? 'paid' : newPaidAmount > 0 ? 'partial_paid' : 'posted');
+      invoiceRepository.updatePaidAmount(invoiceId, newPaidAmount);
+      invoiceRepository.updateStatus(invoiceId, newPaidAmount >= invoice.totalAmount ? 'paid' : newPaidAmount > 0 ? 'partial_paid' : 'posted');
+    });
+    transaction();
   },
 };

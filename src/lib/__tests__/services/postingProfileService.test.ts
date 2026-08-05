@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { setupTestDatabase, teardownTestDatabase, seedTestData } from '../test-helper';
 import { getDefaultProfile, resolveAr, resolveAp, resolveCash, resolveDiscount, validateProfile } from '../../services/postingProfileService';
 import { postingProfileRepository } from '../../repositories/postingProfileRepository';
+import { db } from '../../db';
 import { ValidationError } from '../../utils/errors';
 
 describe('postingProfileService', () => {
@@ -10,6 +11,11 @@ describe('postingProfileService', () => {
   beforeAll(async () => {
     await setupTestDatabase();
     data = seedTestData();
+    // Seed the entry category the entryCategoryId test references (foreign_keys = ON).
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO entry_category (id, code, name, isActive, createdAt, updatedAt, version) VALUES (7, ?, ?, 1, ?, ?, 1)'
+    ).run('CAT-7', 'Category 7', now, now);
   });
 
   afterAll(() => {

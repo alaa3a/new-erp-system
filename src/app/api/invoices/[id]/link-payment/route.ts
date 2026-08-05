@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
 import { invoiceService } from '@/lib/services/invoiceService';
 import { auditLogRepository } from '@/lib/repositories/userRepository';
 import { handleApiError } from '@/lib/utils/errors';
@@ -13,7 +13,7 @@ export async function POST(
   try {
     await ensureInitialized();
     const { id } = await params;
-    const auth = await requireAuth(request);
+    const auth = await requirePermission(request, 'invoice.payment');
     if (auth instanceof NextResponse) return auth;
     const body = await request.json();
     validate(linkPaymentSchema, body);

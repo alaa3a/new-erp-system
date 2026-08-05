@@ -1,32 +1,48 @@
 import { db, ensureSequence, sanitizeCategoryCode } from '../db';
 
+/**
+ * All sequence reads + increments run inside a transaction, so two concurrent
+ * calls can never hand out the same number (Critical Bug Fix #8).
+ */
+
 /** Takes the next number from an existing sequence row (must exist via ensureSequence). */
 function takeNextFrom(documentType: string): string {
-  const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(documentType) as any;
-  const num = seq.nextNumber;
-  const padded = String(num).padStart(seq.padding, '0');
-  db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
-  return seq.prefix + padded;
+  let result = '';
+  const transaction = db.transaction(() => {
+    const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(documentType) as any;
+    const num = seq.nextNumber;
+    const padded = String(num).padStart(seq.padding, '0');
+    db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
+    result = seq.prefix + padded;
+  });
+  transaction();
+  return result;
 }
 
 export function generateInvoiceNumber(type: string): string {
-  const prefixMap: Record<string, string> = {
-    sales: 'INV-S-',
-    purchase: 'INV-P-',
-    credit_note: 'CN-',
-    debit_note: 'DN-',
-  };
-  const prefix = prefixMap[type] || 'INV-';
-  const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(type) as any;
-  if (!seq) {
-    const now = new Date().toISOString();
-    db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 2, 6, ?, ?)').run(type, prefix, now, now);
-    return prefix + '000001';
-  }
-  const num = seq.nextNumber;
-  const padded = String(num).padStart(seq.padding, '0');
-  db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
-  return prefix + padded;
+  let result = '';
+  const transaction = db.transaction(() => {
+    const prefixMap: Record<string, string> = {
+      sales: 'INV-S-',
+      purchase: 'INV-P-',
+      credit_note: 'CN-',
+      debit_note: 'DN-',
+    };
+    const prefix = prefixMap[type] || 'INV-';
+    const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(type) as any;
+    if (!seq) {
+      const now = new Date().toISOString();
+      db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 2, 6, ?, ?)').run(type, prefix, now, now);
+      result = prefix + '000001';
+    } else {
+      const num = seq.nextNumber;
+      const padded = String(num).padStart(seq.padding, '0');
+      db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
+      result = prefix + padded;
+    }
+  });
+  transaction();
+  return result;
 }
 
 export function generateEntryNumber(category?: { id: number; code: string } | null): string {
@@ -42,25 +58,31 @@ export function generateEntryNumber(category?: { id: number; code: string } | nu
 }
 
 export function generateMovementNumber(type: string): string {
-  const prefixMap: Record<string, string> = {
-    receipt: 'MR-',
-    issue: 'MI-',
-    transfer: 'MT-',
-    adjustment: 'MA-',
-    return: 'MRT-',
-  };
-  const prefix = prefixMap[type] || 'MV-';
-  const seqType = 'movement_' + type;
-  const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(seqType) as any;
-  if (!seq) {
-    const now = new Date().toISOString();
-    db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 2, 6, ?, ?)').run(seqType, prefix, now, now);
-    return prefix + '000001';
-  }
-  const num = seq.nextNumber;
-  const padded = String(num).padStart(seq.padding, '0');
-  db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
-  return prefix + padded;
+  let result = '';
+  const transaction = db.transaction(() => {
+    const prefixMap: Record<string, string> = {
+      receipt: 'MR-',
+      issue: 'MI-',
+      transfer: 'MT-',
+      adjustment: 'MA-',
+      return: 'MRT-',
+    };
+    const prefix = prefixMap[type] || 'MV-';
+    const seqType = 'movement_' + type;
+    const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(seqType) as any;
+    if (!seq) {
+      const now = new Date().toISOString();
+      db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 2, 6, ?, ?)').run(seqType, prefix, now, now);
+      result = prefix + '000001';
+    } else {
+      const num = seq.nextNumber;
+      const padded = String(num).padStart(seq.padding, '0');
+      db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
+      result = prefix + padded;
+    }
+  });
+  transaction();
+  return result;
 }
 
 export function generatePartnerCode(): string {
@@ -70,29 +92,41 @@ export function generatePartnerCode(): string {
 }
 
 export function generatePONumber(): string {
-  const seq = db.prepare("SELECT * FROM document_sequence WHERE documentType = 'purchase_order'").get() as any;
-  if (!seq) {
-    const now = new Date().toISOString();
-    db.prepare("INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES ('purchase_order', 'PO-', 2, 6, ?, ?)").run(now, now);
-    return 'PO-000001';
-  }
-  const num = seq.nextNumber;
-  const padded = String(num).padStart(seq.padding, '0');
-  db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
-  return seq.prefix + padded;
+  let result = '';
+  const transaction = db.transaction(() => {
+    const seq = db.prepare("SELECT * FROM document_sequence WHERE documentType = 'purchase_order'").get() as any;
+    if (!seq) {
+      const now = new Date().toISOString();
+      db.prepare("INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES ('purchase_order', 'PO-', 2, 6, ?, ?)").run(now, now);
+      result = 'PO-000001';
+    } else {
+      const num = seq.nextNumber;
+      const padded = String(num).padStart(seq.padding, '0');
+      db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
+      result = seq.prefix + padded;
+    }
+  });
+  transaction();
+  return result;
 }
 
 export function generateReceiptNumber(): string {
-  const seq = db.prepare("SELECT * FROM document_sequence WHERE documentType = 'goods_receipt'").get() as any;
-  if (!seq) {
-    const now = new Date().toISOString();
-    db.prepare("INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES ('goods_receipt', 'GR-', 2, 6, ?, ?)").run(now, now);
-    return 'GR-000001';
-  }
-  const num = seq.nextNumber;
-  const padded = String(num).padStart(seq.padding, '0');
-  db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
-  return seq.prefix + padded;
+  let result = '';
+  const transaction = db.transaction(() => {
+    const seq = db.prepare("SELECT * FROM document_sequence WHERE documentType = 'goods_receipt'").get() as any;
+    if (!seq) {
+      const now = new Date().toISOString();
+      db.prepare("INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES ('goods_receipt', 'GR-', 2, 6, ?, ?)").run(now, now);
+      result = 'GR-000001';
+    } else {
+      const num = seq.nextNumber;
+      const padded = String(num).padStart(seq.padding, '0');
+      db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(new Date().toISOString(), seq.id);
+      result = seq.prefix + padded;
+    }
+  });
+  transaction();
+  return result;
 }
 
 export function generateProductCode(): string {

@@ -3,10 +3,27 @@ import { setupTestDatabase, teardownTestDatabase } from '../test-helper';
 import { entryRepository } from '../../repositories/entryRepository';
 import { entryCategoryRepository } from '../../repositories/entryCategoryRepository';
 import { fiscalPeriodRepository } from '../../repositories/fiscalPeriodRepository';
+import { db } from '../../db';
 
 describe('entryRepository', () => {
   beforeAll(async () => {
     await setupTestDatabase();
+    // Seed FK parents these tests reference (foreign_keys = ON since Bug Fix #1).
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO business_partner (id, code, name, type, status, createdAt, updatedAt, version) VALUES (1, ?, ?, ?, ?, ?, ?, 1)'
+    ).run('BP-FK-01', 'FK Partner', 'vendor', 'active', now, now);
+    db.prepare(
+      'INSERT INTO invoice (id, invoiceNumber, type, status, invoiceDate, dueDate, createdBy, createdAt, updatedAt, version) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
+    ).run('INV-FK-01', 'sales', 'draft', '2026-07-29', '2026-08-29', 'test', now, now);
+    db.prepare(
+      'INSERT INTO invoice (id, invoiceNumber, type, status, invoiceDate, dueDate, createdBy, createdAt, updatedAt, version) VALUES (2, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
+    ).run('INV-FK-02', 'sales', 'draft', '2026-07-29', '2026-08-29', 'test', now, now);
+    for (const id of [999001, 999003, 999004]) {
+      db.prepare(
+        'INSERT INTO entry_category (id, code, name, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, 1, ?, ?, 1)'
+      ).run(id, `CAT-${id}`, `Category ${id}`, now, now);
+    }
   });
 
   afterAll(() => {

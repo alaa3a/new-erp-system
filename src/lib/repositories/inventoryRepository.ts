@@ -1,5 +1,7 @@
 import { db } from '../db';
 import { ProductWarehouseStock } from '@/types/erp';
+import { generateMovementNumber } from '../utils/idGenerator';
+import { BusinessRuleError } from '../utils/errors';
 
 export const inventoryRepository = {
   getStock(productId: number, warehouseId: number): ProductWarehouseStock | null {
@@ -25,11 +27,18 @@ export const inventoryRepository = {
     const now = new Date().toISOString();
     const existing = db.prepare('SELECT * FROM product_warehouse_stock WHERE productId = ? AND warehouseId = ?').get(productId, warehouseId) as any;
     if (existing) {
+      // Never let stock go negative (Critical Bug Fix #5).
       const newQty = existing.quantity + quantityDelta;
+      if (newQty < 0) {
+        throw new BusinessRuleError(`Insufficient stock: cannot reduce by ${Math.abs(quantityDelta)} (available: ${existing.quantity})`);
+      }
       const newValue = existing.quantity * existing.averageCost + quantityDelta * unitCost;
       const newAvg = newQty > 0 ? Math.round(newValue / newQty) : 0;
       db.prepare('UPDATE product_warehouse_stock SET quantity=?, averageCost=?, lastUpdated=?, version=version+1 WHERE id=?').run(newQty, newAvg, now, existing.id);
     } else {
+      if (quantityDelta < 0) {
+        throw new BusinessRuleError(`Insufficient stock: cannot reduce by ${Math.abs(quantityDelta)} (available: 0)`);
+      }
       db.prepare('INSERT INTO product_warehouse_stock (productId, warehouseId, quantity, averageCost, lastUpdated, version) VALUES (?, ?, ?, ?, ?, 1)').run(
         productId, warehouseId, quantityDelta, unitCost, now,
       );
@@ -39,25 +48,9 @@ export const inventoryRepository = {
   recordMovement(data: { type: string; productId: number; warehouseId: number; quantity: number; unitCost: number; referenceType: string; referenceId: number; referenceNumber: string; postedBy: string }): number {
     const now = new Date().toISOString();
     const totalCost = Math.abs(data.quantity) * data.unitCost;
-    const seqType = 'movement_' + data.type;
-    // Use type-specific prefix to avoid UNIQUE constraint collisions
-    const prefixMap: Record<string, string> = {
-      receipt: 'MR-',
-      issue: 'MI-',
-      transfer: 'MT-',
-      adjustment: 'MA-',
-      return: 'MRT-',
-    };
-    const prefix = prefixMap[data.type] || 'MV-';
-    let movementNumber: string;
-    const seq = db.prepare('SELECT * FROM document_sequence WHERE documentType = ?').get(seqType) as any;
-    if (!seq) {
-      db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 2, 6, ?, ?)').run(seqType, prefix, now, now);
-      movementNumber = prefix + '000001';
-    } else {
-      movementNumber = seq.prefix + String(seq.nextNumber).padStart(seq.padding, '0');
-      db.prepare('UPDATE document_sequence SET nextNumber = nextNumber + 1, updatedAt = ? WHERE id = ?').run(now, seq.id);
-    }
+    // Use the shared (transactional) generator instead of inline sequence logic
+    // — one source of truth for movement numbers (Critical Bug Fix #8).
+    const movementNumber = generateMovementNumber(data.type);
     const result = db.prepare('INSERT INTO inventory_movement (movementNumber, type, productId, warehouseId, quantity, unitCost, totalCost, referenceType, referenceId, referenceNumber, postedBy, postedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       movementNumber, data.type, data.productId, data.warehouseId, data.quantity,
       data.unitCost, totalCost, data.referenceType, data.referenceId,

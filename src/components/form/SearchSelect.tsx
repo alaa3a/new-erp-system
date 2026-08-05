@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 interface SearchSelectOption {
@@ -32,8 +32,11 @@ interface SearchSelectProps<T extends SearchSelectOption> {
  * a tax rate) from the chosen item.
  *
  * Options support `disabled` (bold, non-selectable — e.g. parent accounts)
- * and `indent` (tree depth). The dropdown automatically opens upward when
- * there is not enough room below the trigger, so it is never cut off.
+ * and `indent` (tree depth). The dropdown is rendered with `position: fixed`
+ * positioned at the trigger, so it floats above EVERYTHING (including the
+ * scrollable body of modals) instead of being clipped or hidden behind other
+ * content. It opens upward when there is not enough room below, and it stays
+ * glued to the trigger while the page scrolls or resizes.
  */
 export default function SearchSelect<T extends SearchSelectOption>({
   options,
@@ -49,6 +52,7 @@ export default function SearchSelect<T extends SearchSelectOption>({
   const [search, setSearch] = useState('')
   const triggerRef = useRef<HTMLDivElement | null>(null)
   const [flipUp, setFlipUp] = useState(false)
+  const [panelStyle, setPanelStyle] = useState<CSSProperties | null>(null)
 
   const filtered = useMemo(() => {
     if (!search.trim()) return options
@@ -71,6 +75,51 @@ export default function SearchSelect<T extends SearchSelectOption>({
     return Array.from(byGroup.entries()).map(([group, items]) => ({ group, items }))
   }, [filtered])
 
+  // Measure the trigger and pin the panel to it with position:fixed. Fixed
+  // positioning escapes overflow clipping, so the list can never be cut off by
+  // a scrollable container (modal body) or hidden behind sibling content.
+  // NOTE: fixed positioning is relative to the viewport only while no ancestor
+  // has a transform/filter/will-change/backdrop-filter — keep those off the
+  // modal content wrapper.
+  const positionPanel = useCallback(() => {
+    const el = triggerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    // Flip upward when there is not enough room below the trigger.
+    const up = spaceBelow < 280 && spaceAbove > spaceBelow
+    setFlipUp(up)
+    const width = Math.max(rect.width, 224)
+    let left = rect.left
+    if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8)
+    setPanelStyle({
+      position: 'fixed',
+      top: up ? undefined : rect.bottom + 4,
+      bottom: up ? window.innerHeight - rect.top + 4 : undefined,
+      left,
+      width,
+      zIndex: 50,
+    })
+  }, [])
+
+  // Keep the panel glued to its trigger while scrolling or resizing.
+  useEffect(() => {
+    if (!open) return
+    let raf = 0
+    const handle = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(positionPanel)
+    }
+    window.addEventListener('scroll', handle, true)
+    window.addEventListener('resize', handle)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', handle, true)
+      window.removeEventListener('resize', handle)
+    }
+  }, [open, positionPanel])
+
   return (
     <div className="relative">
       <div
@@ -78,15 +127,8 @@ export default function SearchSelect<T extends SearchSelectOption>({
         onClick={() => {
           if (disabled) return
           if (!open) {
-            // Measure at open time so the dropdown flips upward when it would
-            // otherwise overflow the bottom of the viewport (e.g. low in a modal).
-            const el = triggerRef.current
-            if (el) {
-              const rect = el.getBoundingClientRect()
-              const spaceBelow = window.innerHeight - rect.bottom
-              const spaceAbove = rect.top
-              setFlipUp(spaceBelow < 280 && spaceAbove > spaceBelow)
-            }
+            // Position at open time so the panel is pinned before it renders.
+            positionPanel()
             setSearch('')
           }
           setOpen(!open)
@@ -103,7 +145,10 @@ export default function SearchSelect<T extends SearchSelectOption>({
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className={`absolute z-40 w-full min-w-56 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl ${flipUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+          <div
+            style={panelStyle ?? undefined}
+            className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl"
+          >
             <div className="p-2 border-b border-gray-100 dark:border-gray-700">
               <input
                 type="text"

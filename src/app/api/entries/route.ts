@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       periodId: body.periodId || null,
       costCenterId: body.costCenterId || null,
       categoryId: body.entryCategoryId || null,
-      createdBy: body.createdBy || 'system',
+      createdBy: String(auth.userId),
     });
 
     let totalDebit = 0;

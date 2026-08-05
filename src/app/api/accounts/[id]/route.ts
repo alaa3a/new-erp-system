@@ -167,6 +167,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (accountRepository.isUsedInEntries(existing.code)) throw new ValidationError('Account has posted transactions')
     if (accountRepository.isUsedInInvoiceLines(existing.code)) throw new ValidationError('Account is referenced in invoices')
     if (accountRepository.isUsedInPostingProfiles(existing.code)) throw new ValidationError('Account is used in posting profiles')
+    if (accountRepository.isUsedInTaxCodes(existing.code)) throw new ValidationError('Account is used in tax codes')
+    if (accountRepository.isUsedInPurchaseOrderLines(existing.code)) throw new ValidationError('Account is referenced in purchase orders')
     const deleted = accountRepository.hardDelete(accountId, existing.version)
     if (!deleted) throw new ConflictError('Account was modified by another user. Please refresh.')
     auditLogRepository.log({ userId: auth.userId, action: 'delete', entityType: 'account', entityId: accountId })

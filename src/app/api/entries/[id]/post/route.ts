@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
 import { entryRepository } from '@/lib/repositories/entryRepository';
 import { entryService } from '@/lib/services/entryService';
 import { auditLogRepository } from '@/lib/repositories/userRepository';
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     await ensureInitialized();
     const { id } = await params;
-    const auth = await requireAuth(request);
+    const auth = await requirePermission(request, 'entry.post');
     if (auth instanceof NextResponse) return auth;
     const entryId = parseInt(id, 10);
     const entry = entryRepository.findById(entryId);
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const action = body.action || 'post';
 
     if (action === 'post') {
-      entryService.postEntry(entryId, body.userId || 'system');
+      entryService.postEntry(entryId, String(auth.userId));
     } else if (action === 'cancel') {
       if (entry.status !== 'draft') throw new ValidationError('Only draft entries can be cancelled');
       entryRepository.updateStatus(entryId, 'cancelled');

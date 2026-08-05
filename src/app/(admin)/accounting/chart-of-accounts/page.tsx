@@ -61,7 +61,12 @@ function UsageCell({ usage }: { usage?: AccountUsage }) {
   const [hover, setHover] = useState(false)
   const hasPosting = (usage?.postingProfiles?.length || 0) > 0
   const hasTax = (usage?.taxCodes?.length || 0) > 0
-  if (!hasPosting && !hasTax) return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+  const hasEntries = (usage?.entryLines || 0) > 0
+  const hasInvoices = (usage?.invoiceLines || 0) > 0
+  const hasPOs = (usage?.purchaseOrderLines || 0) > 0
+  if (!hasPosting && !hasTax && !hasEntries && !hasInvoices && !hasPOs) {
+    return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+  }
   return (
     <div
       className="relative inline-block"
@@ -75,9 +80,18 @@ function UsageCell({ usage }: { usage?: AccountUsage }) {
         {hasTax && (
           <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400">Tax</span>
         )}
+        {hasEntries && (
+          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">Entries · {usage!.entryLines}</span>
+        )}
+        {hasInvoices && (
+          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-400">Invoices · {usage!.invoiceLines}</span>
+        )}
+        {hasPOs && (
+          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-400">POs · {usage!.purchaseOrderLines}</span>
+        )}
       </div>
       {hover && (
-        <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 shadow-xl text-xs">
+        <div className="absolute z-30 left-0 top-full mt-1 w-72 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 shadow-xl text-xs">
           {hasPosting && (
             <div className="mb-2">
               <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Posting Profiles</p>
@@ -87,11 +101,19 @@ function UsageCell({ usage }: { usage?: AccountUsage }) {
             </div>
           )}
           {hasTax && (
-            <div>
+            <div className="mb-2">
               <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Tax Codes</p>
               {usage!.taxCodes.map((name, i) => (
                 <p key={i} className="text-gray-500 dark:text-gray-400">{name}</p>
               ))}
+            </div>
+          )}
+          {(hasEntries || hasInvoices || hasPOs) && (
+            <div>
+              <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Transaction Lines</p>
+              {hasEntries && <p className="text-gray-500 dark:text-gray-400">Journal entries: {usage!.entryLines}</p>}
+              {hasInvoices && <p className="text-gray-500 dark:text-gray-400">Invoices: {usage!.invoiceLines}</p>}
+              {hasPOs && <p className="text-gray-500 dark:text-gray-400">Purchase orders: {usage!.purchaseOrderLines}</p>}
             </div>
           )}
         </div>
@@ -666,6 +688,10 @@ export default function ChartOfAccountsPage() {
             )
           })()}
         </td>
+        {/* Used In */}
+        <td className="py-2 px-3">
+          <UsageCell usage={usageMap[account.code]} />
+        </td>
         {/* Type */}
         <td className="py-2 px-3">
           <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${typeConfig[account.type].bg} ${typeConfig[account.type].text}`}>
@@ -682,10 +708,6 @@ export default function ChartOfAccountsPage() {
           }`}>
             {account.isActive ? 'Active' : 'Inactive'}
           </span>
-        </td>
-        {/* Used In */}
-        <td className="py-2 px-3">
-          <UsageCell usage={usageMap[account.code]} />
         </td>
         {/* Actions */}
         <td className="py-2 px-3 text-right">
@@ -810,9 +832,9 @@ export default function ChartOfAccountsPage() {
                 <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</th>
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Linked To</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Used In</th>
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
                   <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Status</th>
-                  <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Used In</th>
                   <th className="text-right py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>

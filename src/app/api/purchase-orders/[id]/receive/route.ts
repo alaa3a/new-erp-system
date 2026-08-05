@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
 import { purchaseOrderService } from '@/lib/services/purchaseOrderService';
 import { auditLogRepository } from '@/lib/repositories/userRepository';
 import { handleApiError } from '@/lib/utils/errors';
@@ -13,7 +13,7 @@ export async function POST(
   try {
     await ensureInitialized();
     const { id } = await params;
-    const auth = await requireAuth(request);
+    const auth = await requirePermission(request, 'purchaseOrder.receive');
     if (auth instanceof NextResponse) return auth;
     const body = await request.json();
     validate(receivePurchaseOrderSchema, body);
@@ -21,7 +21,7 @@ export async function POST(
 
 
 
-    purchaseOrderService.receiveGoods(Number(id), lines, warehouseId, 'system');
+    purchaseOrderService.receiveGoods(Number(id), lines, warehouseId, String(auth.userId));
     auditLogRepository.log({ userId: auth.userId, action: 'receive', entityType: 'purchase_order', entityId: Number(id) });
     return NextResponse.json({ success: true, data: { message: 'Goods received successfully' } });
   } catch (error) {

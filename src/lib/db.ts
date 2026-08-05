@@ -100,6 +100,13 @@ class DatabaseWrapper {
     return (...args: any[]) => {
       const state = getState();
       const d = ensureSync();
+      // Re-entrant: a transaction called inside an active transaction joins the
+      // outer one (SQLite does not allow nested BEGIN). Sequence generators and
+      // stock helpers are called from within service transactions, so without
+      // this they would crash with "cannot start a transaction within a transaction".
+      if (state.inTransaction) {
+        return fn(...args);
+      }
       d.run('BEGIN TRANSACTION');
       state.inTransaction = true;
       try {
@@ -125,6 +132,10 @@ function saveDb(): void {
   const data = state.db.export();
   const buffer = Buffer.from(data);
   writeFileSync(DB_PATH, buffer);
+  // sql.js export() recreates the underlying connection, which wipes
+  // connection-local pragmas — re-enable FK enforcement so it survives
+  // every save (Critical Bug Fix #1).
+  try { state.db.exec('PRAGMA foreign_keys = ON'); } catch { /* ignore */ }
 }
 
 async function ensureDb(): Promise<void> {
@@ -145,6 +156,10 @@ async function ensureDb(): Promise<void> {
     } else {
       state.db = new SQL.Database();
     }
+    // Enforce referential integrity on every connection (Critical Bug Fix #1).
+    // sql.js links against SQLite with FK support compiled in; the pragma must
+    // run outside any transaction, which is the case here (fresh connection).
+    state.db.exec('PRAGMA foreign_keys = ON');
     state.initialized = true;
   })();
   await state.initPromise;
@@ -730,6 +745,28 @@ function initDb() {
     const categories = db.prepare('SELECT id, code FROM entry_category').all() as { id: number; code: string }[];
     for (const c of categories) ensureCategorySequence(c.id, c.code);
   } catch (e) { /* ignore */ }
+  // Migration: permissions added after the initial seed — INSERT OR IGNORE so
+  // existing DBs gain them without touching the seeded rows.
+  try {
+    const extraPerms: Array<[string, string, string, string]> = [
+      ['invoice.payment', 'invoice', 'payment', 'Link payments to invoices'],
+      ['purchaseOrder.close', 'purchaseOrder', 'close', 'Close purchase orders'],
+      ['inventory.adjust', 'inventory', 'adjust', 'Adjust inventory stock'],
+    ];
+    const stmt = db.prepare('INSERT OR IGNORE INTO permission (key, module, action, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
+    const now = new Date().toISOString();
+    for (const [key, module, action, desc] of extraPerms) stmt.run(key, module, action, desc, now, now);
+  } catch (e) { /* ignore */ }
+  // Migration: the seeded admin keeps ALL permissions (existing DBs were seeded
+  // with an empty permissionIds list — grant them now so permission checks work).
+  try {
+    const admin = db.prepare("SELECT id FROM users WHERE email = 'admin@erp.local'").get() as any;
+    if (admin) {
+      const allPerms = db.prepare('SELECT id FROM permission').all() as { id: number }[];
+      db.prepare('UPDATE users SET permissionIds = ?, updatedAt = ? WHERE id = ?')
+        .run(JSON.stringify(allPerms.map(p => p.id)), new Date().toISOString(), admin.id);
+    }
+  } catch (e) { /* ignore */ }
   saveDb();
 }
 
@@ -797,8 +834,13 @@ function seedInitialData() {
     );
   }
 
-  const permCount = (db.prepare('SELECT count(1) AS count FROM permission').get() as any).count;
-  if (permCount === 0) {
+  // Seed permissions idempotently (INSERT OR IGNORE) rather than gating on
+  // permCount === 0: the initDb() migration inserts a few extra permissions
+  // (invoice.payment etc.) BEFORE this seed runs, so a fresh DB would otherwise
+  // have count > 0 and the full permission set would never be seeded — leaving
+  // the app with only 3 permissions and breaking every permission check
+  // (Critical Bug Fix #13 regression on fresh installs).
+  {
     const now = new Date().toISOString();
     const perms = [
       ['partner.view', 'partner', 'view', 'View business partners'],
@@ -848,12 +890,26 @@ function seedInitialData() {
       ['purchaseOrder.delete', 'purchaseOrder', 'delete', 'Delete purchase orders'],
       ['purchaseOrder.approve', 'purchaseOrder', 'approve', 'Approve purchase orders'],
       ['purchaseOrder.receive', 'purchaseOrder', 'receive', 'Receive goods against POs'],
+      ['purchaseOrder.close', 'purchaseOrder', 'close', 'Close purchase orders'],
+      ['invoice.payment', 'invoice', 'payment', 'Link payments to invoices'],
+      ['inventory.adjust', 'inventory', 'adjust', 'Adjust inventory stock'],
     ];
-    const stmt = db.prepare('INSERT INTO permission (key, module, action, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
+    const stmt = db.prepare('INSERT OR IGNORE INTO permission (key, module, action, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
     for (const [key, module, action, desc] of perms) {
       stmt.run(key, module, action, desc, now, now);
     }
   }
+
+  // Grant the seeded admin every permission. The admin user is created before
+  // permissions are seeded (order above), so this sync runs after both exist.
+  try {
+    const admin = db.prepare("SELECT id FROM users WHERE email = 'admin@erp.local'").get() as any;
+    if (admin) {
+      const allPerms = db.prepare('SELECT id FROM permission').all() as { id: number }[];
+      db.prepare('UPDATE users SET permissionIds = ?, updatedAt = ? WHERE id = ?')
+        .run(JSON.stringify(allPerms.map(p => p.id)), new Date().toISOString(), admin.id);
+    }
+  } catch (e) { /* ignore */ }
 
   // Seed notifications for the admin user
   const notifCount = (db.prepare('SELECT count(1) AS count FROM notification').get() as any).count;

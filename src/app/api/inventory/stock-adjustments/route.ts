@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireAuth } from '@/lib/auth/middleware'
+import { requirePermission } from '@/lib/auth/middleware'
 import { inventoryService } from '@/lib/services/inventoryService'
 import { inventoryRepository } from '@/lib/repositories/inventoryRepository'
 import { auditLogRepository } from '@/lib/repositories/userRepository'
@@ -14,21 +14,22 @@ const stockAdjustmentSchema = z.object({
   warehouseId: z.number().int().positive(),
   newQuantity: z.number().min(0),
   reason: z.string().optional().default('Stock Adjustment'),
-  userId: z.string().optional().default('system'),
+  // Server-authoritative: the acting user is always taken from the session,
+  // never from the request body (audit integrity).
 })
 
 export async function POST(request: NextRequest) {
   try {
     await ensureInitialized()
     const body = validate(stockAdjustmentSchema, await request.json())
-    const auth = await requireAuth(request)
+    const auth = await requirePermission(request, 'inventory.adjust')
     if (auth instanceof NextResponse) return auth
-    const { productId, warehouseId, newQuantity, reason, userId } = body
+    const { productId, warehouseId, newQuantity, reason } = body
 
     // Get current stock before adjustment
     const current = inventoryRepository.getStock(productId, warehouseId)
 
-    inventoryService.adjustStock(productId, warehouseId, newQuantity, userId, reason)
+    inventoryService.adjustStock(productId, warehouseId, newQuantity, String(auth.userId), reason)
 
     // Return the new state
     const updated = inventoryRepository.getStock(productId, warehouseId)

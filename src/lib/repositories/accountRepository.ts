@@ -176,6 +176,16 @@ export const accountRepository = {
     ).get(code, code, code, code, code, code) as any).count > 0;
   },
 
+  isUsedInTaxCodes(code: string): boolean {
+    const row = db.prepare('SELECT count(1) AS count FROM tax_code WHERE accountCode = ?').get(code) as { count: number } | undefined;
+    return (row?.count ?? 0) > 0;
+  },
+
+  isUsedInPurchaseOrderLines(code: string): boolean {
+    const row = db.prepare('SELECT count(1) AS count FROM purchase_order_line WHERE accountCode = ?').get(code) as { count: number } | undefined;
+    return (row?.count ?? 0) > 0;
+  },
+
   /** AR/AP usage of a code across ACTIVE posting profiles (fallback when an account is not partner-linked). */
   getActiveProfileRoles(code: string): { asAr: boolean; asAp: boolean } {
     const row = db.prepare(
@@ -186,7 +196,9 @@ export const accountRepository = {
 
   getUsageMap(): Record<string, AccountUsage> {
     const usage: Record<string, AccountUsage> = {};
-    const ensure = (code: string) => { if (!usage[code]) usage[code] = { postingProfiles: [], taxCodes: [] }; };
+    const ensure = (code: string) => {
+      if (!usage[code]) usage[code] = { postingProfiles: [], taxCodes: [], entryLines: 0, invoiceLines: 0, purchaseOrderLines: 0 };
+    };
 
     const profileFields: Array<[string, string]> = [
       ['accountsReceivableCode', 'AR'],
@@ -209,6 +221,21 @@ export const accountRepository = {
     const taxCodes = db.prepare('SELECT name, accountCode FROM tax_code WHERE isGroup = 0 AND accountCode != \'\'').all() as any[];
     for (const t of taxCodes) {
       if (t.accountCode) { ensure(t.accountCode); usage[t.accountCode].taxCodes.push(t.name); }
+    }
+
+    // Transaction-line usage counts — everything that would block a delete.
+    const lineQueries: Array<{ sql: string; field: 'entryLines' | 'invoiceLines' | 'purchaseOrderLines' }> = [
+      { sql: "SELECT accountCode, count(1) AS count FROM entry_line WHERE accountCode != '' GROUP BY accountCode", field: 'entryLines' },
+      { sql: "SELECT accountCode, count(1) AS count FROM invoice_line WHERE accountCode != '' GROUP BY accountCode", field: 'invoiceLines' },
+      { sql: "SELECT accountCode, count(1) AS count FROM purchase_order_line WHERE accountCode != '' GROUP BY accountCode", field: 'purchaseOrderLines' },
+    ];
+    for (const q of lineQueries) {
+      const rows = db.prepare(q.sql).all() as Array<{ accountCode: string; count: number }>;
+      for (const r of rows) {
+        if (!r.accountCode) continue;
+        ensure(r.accountCode);
+        usage[r.accountCode][q.field] = r.count || 0;
+      }
     }
 
     return usage;

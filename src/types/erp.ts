@@ -231,6 +231,12 @@ export type TaxGroup = TaxCode & { isGroup: true };
 export interface AccountUsage {
   postingProfiles: { name: string; role: string }[];  // role: AR | AP | Cash | Discount | Inventory | COGS | Adjustment
   taxCodes: string[];
+  /** Number of journal entry lines referencing the account. */
+  entryLines: number;
+  /** Number of invoice lines referencing the account. */
+  invoiceLines: number;
+  /** Number of purchase order lines referencing the account. */
+  purchaseOrderLines: number;
 }
 
 export interface PaymentTerm {

@@ -5,6 +5,7 @@ import { auditLogRepository } from '@/lib/repositories/userRepository';
 import { handleApiError } from '@/lib/utils/errors';
 import { ensureInitialized } from '@/lib/db';
 import { validate, updateInvoiceSchema } from '@/lib/validators';
+import { calculateLineTotal, calculateVatAmount } from '@/lib/formatters/money';
 
 export async function GET(
   request: NextRequest,
@@ -75,8 +76,9 @@ export async function PUT(
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        const lineTotal = line.quantity * line.unitPrice * (1 - (line.discountPercent || 0) / 100);
-        const vatAmt = lineTotal * (line.vatRate || 0) / 100;
+        // Integer-cents math — no float truncation (Critical Bug Fix #6)
+        const lineTotal = calculateLineTotal(line.quantity, line.unitPrice, line.discountPercent || 0);
+        const vatAmt = calculateVatAmount(lineTotal, line.vatRate || 0);
 
         invoiceRepository.addLine({
           invoiceId: Number(id),

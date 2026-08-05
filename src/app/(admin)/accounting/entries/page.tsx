@@ -1336,9 +1336,9 @@ function EntriesPageContent() {
             <>
               {/* ① Select the account first — its linked dimension picker appears on the same line */}
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Row 1 — Account + its linked dimension selector side by side */}
-                  <div className={showLineDimension ? '' : 'sm:col-span-2'}>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  {/* Row 1 — Account (50%) + linked dimension selector (50%) side by side */}
+                  <div className="sm:col-span-6 sm:row-start-1">
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Account *</label>
                     <SearchSelect
                       options={accountOptions}
@@ -1395,15 +1395,15 @@ function EntriesPageContent() {
                     })()}
                   </div>
 
-                  {/* Row 2 — Description + Amount */}
-                  <div>
+                  {/* Row 2 — Description (75%) + Amount (25%) */}
+                  <div className="sm:col-span-9 sm:row-start-2">
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Description</label>
                     <input type="text" value={draftLine.description}
                       onChange={e => updateDraftLine({ description: e.target.value })}
                       placeholder="Line description"
                       className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400" />
                   </div>
-                  <div>
+                  <div className="sm:col-span-3 sm:row-start-2">
                     <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Amount ($)</label>
                     <div className="flex items-center gap-1.5">
                       <input type="number" value={draftLine.debitAmount || ''} min={0} step="0.01" placeholder="Dr"
@@ -1432,7 +1432,7 @@ function EntriesPageContent() {
                         : []
                       const options = [...rootHeader, ...currentOption, ...opts]
                       return (
-                        <div>
+                        <div className="sm:col-span-6 sm:row-start-1">
                           <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Cost Center <span className="text-red-400">*</span></label>
                           <SearchSelect
                             options={options}
@@ -1453,7 +1453,7 @@ function EntriesPageContent() {
                       const filter = a?.linkPartnerFilter || 'both'
                       const role = filter === 'customer' ? 'ar' : filter === 'vendor' ? 'ap' : 'both'
                       return (
-                        <div>
+                        <div className="sm:col-span-6 sm:row-start-1">
                           <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Partner <span className="text-red-400">*</span> ({filter === 'both' ? 'customers & vendors' : filter + 's'})</label>
                           <SearchSelect
                             options={partnerOptionsForRole(role)}
@@ -1479,7 +1479,7 @@ function EntriesPageContent() {
                       const role = partnerRoleForAccount(draftLine.accountCode)
                       const desc = role === 'ar' ? 'customers' : role === 'ap' ? 'vendors' : 'customers & vendors'
                       return (
-                        <div>
+                        <div className="sm:col-span-6 sm:row-start-1">
                           <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Partner <span className="text-red-400">*</span> ({desc})</label>
                           <SearchSelect
                             options={partnerOptionsForRole(role)}
@@ -1500,7 +1500,7 @@ function EntriesPageContent() {
                       )
                     }
                     return (
-                      <div>
+                      <div className="sm:col-span-6 sm:row-start-1">
                         <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Employee <span className="text-red-400">*</span></label>
                         <SearchSelect
                           options={employeeOptions}

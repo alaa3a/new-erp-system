@@ -7,6 +7,13 @@ describe('accountRepository', () => {
   beforeAll(async () => {
     await setupTestDatabase();
     seedTestData();
+    // Seed cost centers the dynamic-link tests reference (foreign_keys = ON).
+    const now = new Date().toISOString();
+    for (const [id, code, name] of [[1, 'CC-1', 'Cost Center One'], [2, 'CC-2', 'Cost Center Two']] as Array<[number, string, string]>) {
+      db.prepare(
+        'INSERT INTO cost_center (id, code, name, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, 1, ?, ?, 1)'
+      ).run(id, code, name, now, now);
+    }
   });
 
   afterAll(() => {
@@ -159,6 +166,34 @@ describe('accountRepository', () => {
       expect(accountRepository.isUsedInEntries('999')).toBe(false);
       expect(accountRepository.isUsedInInvoiceLines('999')).toBe(false);
       expect(accountRepository.isUsedInPostingProfiles('999')).toBe(false);
+      expect(accountRepository.isUsedInTaxCodes('999')).toBe(false);
+      expect(accountRepository.isUsedInPurchaseOrderLines('999')).toBe(false);
+    });
+
+    it('should detect accounts referenced by a tax code (settings)', () => {
+      // Seed tax type VAT20 maps to account '202' (VAT Output)
+      expect(accountRepository.isUsedInTaxCodes('202')).toBe(true);
+    });
+
+    it('should detect accounts referenced in purchase order lines', () => {
+      const now = new Date().toISOString();
+      const acctId = accountRepository.create({
+        code: '608', name: 'PO Reference', type: 'expense',
+        parentId: null, costCenterId: null, linkType: null, linkId: null, linkPartnerFilter: null, isActive: true,
+        isSystemAccount: false, description: '',
+      });
+      const prodId = db.prepare(
+        'INSERT INTO product (code, name, itemType, unitOfMeasure, salesPrice, purchasePrice, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, 0, 0, 1, ?, ?, 1)'
+      ).run('PR-PO-REF', 'PO Ref Item', 'service', 'hrs', now, now).lastInsertRowid as number;
+      const poId = db.prepare(
+        'INSERT INTO purchase_order (poNumber, status, orderDate, expectedDate, createdBy, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)'
+      ).run('PO-REF-01', 'draft', '2026-01-01', '2026-01-15', 'admin', now, now).lastInsertRowid as number;
+      db.prepare(
+        'INSERT INTO purchase_order_line (poId, lineNumber, productId, description, quantity, unitPrice, lineTotal, vatRate, accountCode, createdAt, updatedAt) VALUES (?, 1, ?, ?, 1, 1000, 1000, 0, ?, ?, ?)'
+      ).run(poId, prodId, 'Test line', '608', now, now);
+
+      expect(accountRepository.isUsedInPurchaseOrderLines('608')).toBe(true);
+      expect(acctId).toBeGreaterThan(0);
     });
   });
 
@@ -173,6 +208,23 @@ describe('accountRepository', () => {
       const taxUsage = usage['202'];
       expect(taxUsage).toBeDefined();
       expect(taxUsage.taxCodes.length).toBeGreaterThan(0);
+      // Every usage entry carries transaction-line counts
+      expect(typeof arUsage.entryLines).toBe('number');
+      expect(typeof arUsage.invoiceLines).toBe('number');
+      expect(typeof arUsage.purchaseOrderLines).toBe('number');
+    });
+
+    it('should count journal entry lines per account code', () => {
+      const now = new Date().toISOString();
+      const entryId = db.prepare(
+        'INSERT INTO entry (entryNumber, status, entryDate, description, createdBy, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)'
+      ).run('JE-COUNT-01', 'draft', '2026-01-01', 'Usage count test', 'admin', now, now).lastInsertRowid as number;
+      db.prepare(
+        'INSERT INTO entry_line (entryId, lineNumber, accountCode, debitAmount, creditAmount, createdAt) VALUES (?, 1, ?, 1000, 0, ?)'
+      ).run(entryId, '101', now);
+
+      const usage = accountRepository.getUsageMap();
+      expect(usage['101']?.entryLines ?? 0).toBe(1);
     });
   });
 
