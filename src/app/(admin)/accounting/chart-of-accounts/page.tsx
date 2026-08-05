@@ -23,6 +23,7 @@ import {
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { useToast } from '@/components/ui/toast/ToastProvider'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Account, AccountType, AccountPartnerFilter, CostCenter, AccountUsage } from '@/types/erp'
 
 const accountTypes: AccountType[] = ['asset', 'liability', 'equity', 'revenue', 'expense']
@@ -53,9 +54,6 @@ const costCenterBadges: { bg: string; text: string; dot: string }[] = [
 const getCostCenterBadge = (id: number) => costCenterBadges[id % costCenterBadges.length]
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const accountTypeLabel: Record<AccountType, string> = {
-  asset: 'Asset (1)', liability: 'Liability (2)', equity: 'Equity (3)', revenue: 'Revenue (4)', expense: 'Expense (5)',
-}
 
 function UsageCell({ usage }: { usage?: AccountUsage }) {
   const [hover, setHover] = useState(false)
@@ -150,11 +148,7 @@ const emptyForm = (accounts: Account[], parentId: number | null, type: AccountTy
 
 export default function ChartOfAccountsPage() {
   const toast = useToast()
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([])
-  const [usageMap, setUsageMap] = useState<Record<string, AccountUsage>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<AccountType | 'All'>('All')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
@@ -162,12 +156,10 @@ export default function ChartOfAccountsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [formData, setFormData] = useState<AccountFormData>(emptyForm([], null, 'asset'))
-  const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [toggleTarget, setToggleTarget] = useState<Account | null>(null)
-  const [toggling, setToggling] = useState(false)
   const [linkCcTarget, setLinkCcTarget] = useState<Account | null>(null)
   // Multi-step link wizard: 'pick' = choose Cost/Partners/Emp, 'config' = the detail step
   const [linkStep, setLinkStep] = useState<'pick' | 'config'>('pick')
@@ -189,39 +181,32 @@ export default function ChartOfAccountsPage() {
   const [parentOpen, setParentOpen] = useState(false)
   const [toggleError, setToggleError] = useState('')
 
-  const fetchAccounts = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
+  const { data: accountsData, isLoading: loading, error, refetch: refetchAccounts } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: async (): Promise<{ success: boolean; data: Account[]; usage?: Record<string, AccountUsage>; error?: string }> => {
       const res = await fetch('/api/accounts')
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const json = await res.json()
       if (!json.success) throw new Error(json.error)
-      setAccounts(json.data)
-      setUsageMap(json.usage || {})
-    } catch (err) {
-      setError('Failed to load accounts. Make sure the server is running.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      return json
+    },
+  })
 
-  const fetchCostCenters = useCallback(async () => {
-    try {
+  const accounts = accountsData?.data ?? []
+  const usageMap = accountsData?.usage ?? {}
+
+  const { data: costCentersData } = useQuery({
+    queryKey: ['cost-centers'],
+    queryFn: async (): Promise<{ success: boolean; data: CostCenter[]; error?: string }> => {
       const res = await fetch('/api/cost-centers')
-      if (res.ok) {
-        const json = await res.json()
-        if (json.success) setCostCenters(json.data)
-      }
-    } catch {
-      // silent
-    }
-  }, [])
+      if (!res.ok) throw new Error(`Error ${res.status}`)
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json
+    },
+  })
 
-  useEffect(() => {
-    fetchAccounts()
-    fetchCostCenters()
-  }, [fetchAccounts, fetchCostCenters])
+  const costCenters = costCentersData?.data ?? []
 
   // Filtered & searched accounts (keep ancestors so tree is navigable)
   const filteredAccounts = useMemo(() => {
@@ -292,14 +277,8 @@ export default function ChartOfAccountsPage() {
   }
 
   // --- Save ---
-  const handleSave = async () => {
-    if (!formData.code.trim() || !formData.name.trim()) {
-      setFormError('Code and name are required')
-      return
-    }
-    setSaving(true)
-    setFormError('')
-    try {
+  const saveMutation = useMutation({
+    mutationFn: async () => {
       const url = editingAccount ? `/api/accounts/${editingAccount.id}` : '/api/accounts'
       const method = editingAccount ? 'PUT' : 'POST'
       const body: any = { code: formData.code, name: formData.name, type: formData.type, parentId: formData.parentId }
@@ -311,18 +290,28 @@ export default function ChartOfAccountsPage() {
         const err = await res.json()
         throw new Error(err.error || 'Failed to save account')
       }
-      const json = await res.json()
+      return res.json()
+    },
+    onSuccess: (json) => {
       if (json.warning) {
         toast.info(json.warning)
       }
       setShowForm(false)
-      fetchAccounts()
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
       toast.success(editingAccount ? `Account "${formData.name}" updated` : `Account "${formData.name}" created`)
-    } catch (err: any) {
+    },
+    onError: (err: Error) => {
       setFormError(err.message)
-    } finally {
-      setSaving(false)
+    },
+  })
+
+  const handleSave = () => {
+    if (!formData.code.trim() || !formData.name.trim()) {
+      setFormError('Code and name are required')
+      return
     }
+    setFormError('')
+    saveMutation.mutate()
   }
 
   // --- Toggle Active (with confirmation) ---
@@ -331,27 +320,35 @@ export default function ChartOfAccountsPage() {
     setToggleError('')
   }
 
-  const handleToggleConfirm = async () => {
-    if (!toggleTarget) return
-    setToggling(true)
-    setToggleError('')
-    try {
+  const toggleMutation = useMutation({
+    mutationFn: async () => {
+      if (!toggleTarget) return
       const res = await fetch(`/api/accounts/${toggleTarget.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'toggleActive', isActive: !toggleTarget.isActive, cascade: true }),
       })
-      const errData = !res.ok ? await res.json().catch(() => ({})) : null
-      if (errData) throw new Error(errData.error || `HTTP ${res.status}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+    },
+    onSuccess: () => {
+      const targetName = toggleTarget?.name ?? ''
+      const wasActive = toggleTarget?.isActive ?? false
       setToggleTarget(null)
-      fetchAccounts()
-      toast.success(toggleTarget.isActive ? `Account "${toggleTarget.name}" deactivated` : `Account "${toggleTarget.name}" activated`)
-    } catch (err: any) {
-      // Show the error inside the modal so it is never hidden behind it.
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      toast.success(wasActive ? `Account "${targetName}" deactivated` : `Account "${targetName}" activated`)
+    },
+    onError: (err: Error) => {
       setToggleError(err.message || 'Failed to toggle account status')
-    } finally {
-      setToggling(false)
-    }
+    },
+  })
+
+  const handleToggleConfirm = () => {
+    if (!toggleTarget) return
+    setToggleError('')
+    toggleMutation.mutate()
   }
 
   // --- Delete (with undo) ---
@@ -393,33 +390,41 @@ export default function ChartOfAccountsPage() {
           toast.error(`Account restored, but re-linking failed: ${linkErr?.message || 'unknown error'}`)
         }
       }
-      fetchAccounts()
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
       toast.success(`Account "${account.name}" restored`)
     } catch (err: any) {
       toast.error(err.message || 'Failed to restore account')
-      fetchAccounts()
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
     }
   }
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return
-    setDeleteError('')
-    const deleted = deleteTarget
-    try {
-      const res = await fetch(`/api/accounts/${deleted.id}`, { method: 'DELETE' })
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!deleteTarget) return
+      const res = await fetch(`/api/accounts/${deleteTarget.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Delete failed')
       }
+    },
+    onSuccess: () => {
+      const deleted = deleteTarget
       setDeleteTarget(null)
-      fetchAccounts()
-      toast.success(`Account "${deleted.name}" deleted`, {
-        action: { label: 'Undo', onClick: () => restoreAccount(deleted) },
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      toast.success(`Account "${deleted?.name}" deleted`, {
+        action: { label: 'Undo', onClick: () => restoreAccount(deleted!) },
         duration: 8000,
       })
-    } catch (err: any) {
+    },
+    onError: (err: Error) => {
       setDeleteError(err.message)
-    }
+    },
+  })
+
+  const handleDelete = () => {
+    if (!deleteTarget) return
+    setDeleteError('')
+    deleteMutation.mutate()
   }
 
   // --- Link Account (Cost Center | Partner | Employee) ---
@@ -456,46 +461,36 @@ export default function ChartOfAccountsPage() {
     return count
   }
 
-  const doLink = async (cascade: boolean) => {
-    if (!linkCcTarget) return
-    setLinkCcError('')
-    // Partner and employee links are dimension-level: the account links to a type
-    // filter (customers/vendors/both) or to employees in general — the concrete
-    // partner/employee is chosen on each entry line, so no linkId is sent.
-    const linkType = linkTab === 'cost_center'
-      ? (selectedCostCenterId ? 'cost_center' : null)
-      : linkTab === 'employee'
-        ? (linkEmployeeRemove ? null : 'employee')
-        : (partnerLinkFilter === 'none' ? null : 'partner')
-    const linkId = linkTab === 'cost_center' ? selectedCostCenterId : null
-    const linkPartnerFilter = linkTab === 'partner' && partnerLinkFilter !== 'none' ? partnerLinkFilter : null
+  const linkMutation = useMutation({
+    mutationFn: async ({ cascade }: { cascade: boolean }) => {
+      if (!linkCcTarget) return
+      // Partner and employee links are dimension-level: the account links to a type
+      // filter (customers/vendors/both) or to employees in general — the concrete
+      // partner/employee is chosen on each entry line, so no linkId is sent.
+      const linkType = linkTab === 'cost_center'
+        ? (selectedCostCenterId ? 'cost_center' : null)
+        : linkTab === 'employee'
+          ? (linkEmployeeRemove ? null : 'employee')
+          : (partnerLinkFilter === 'none' ? null : 'partner')
+      const linkId = linkTab === 'cost_center' ? selectedCostCenterId : null
+      const linkPartnerFilter = linkTab === 'partner' && partnerLinkFilter !== 'none' ? partnerLinkFilter : null
 
-    try {
       const res = await fetch(`/api/accounts/${linkCcTarget.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'link', linkType, linkId, linkPartnerFilter, cascade }),
       })
-      const errData = !res.ok ? await res.json().catch(() => ({})) : null
-      if (errData) throw new Error(errData.error || `HTTP ${res.status}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+    },
+    onSuccess: () => {
       setLinkCcConfirmOpen(false)
       setLinkCcOpen(false)
-      setLinkCcTarget(null)
-      setLinkCcError('')
-      // Don't show loading spinner — just refresh data silently
-      const [accRes, ccRes] = await Promise.all([
-        fetch('/api/accounts'),
-        fetch('/api/cost-centers'),
-      ])
-      if (accRes.ok) {
-        const accJson = await accRes.json()
-        if (accJson.success) setAccounts(accJson.data)
-      }
-      if (ccRes.ok) {
-        const ccJson = await ccRes.json()
-        if (ccJson.success) setCostCenters(ccJson.data)
-      }
-      const targetName = linkCcTarget.name
+      const targetName = linkCcTarget?.name ?? ''
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['cost-centers'] })
       if (linkTab === 'partner') {
         if (partnerLinkFilter === 'none') {
           toast.success(`Partner link removed from "${targetName}"`)
@@ -515,13 +510,18 @@ export default function ChartOfAccountsPage() {
           ? `Cost center "${ccName}" linked to "${targetName}"`
           : `Cost center link removed from "${targetName}"`)
       }
-      if (!accRes.ok || !ccRes.ok) {
-        setError('Link saved, but failed to refresh data')
-      }
-    } catch (err: any) {
-      // Show the error inside the modal so it is never hidden behind it.
+      setLinkCcTarget(null)
+      setLinkCcError('')
+    },
+    onError: (err: Error) => {
       setLinkCcError(err.message || 'Failed to link')
-    }
+    },
+  })
+
+  const doLink = (cascade: boolean) => {
+    if (!linkCcTarget) return
+    setLinkCcError('')
+    linkMutation.mutate({ cascade })
   }
 
   // If the account has sub-accounts, ask for the scope in a confirmation
@@ -800,8 +800,8 @@ export default function ChartOfAccountsPage() {
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-16 px-6">
             <AlertTriangle className="w-10 h-10 text-red-400 mb-3" />
-            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
-            <button onClick={fetchAccounts} className="mt-3 text-sm font-medium text-brand-500 hover:text-brand-600 transition-colors">
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error?.message || 'Failed to load accounts. Make sure the server is running.'}</p>
+            <button onClick={() => refetchAccounts()} className="mt-3 text-sm font-medium text-brand-500 hover:text-brand-600 transition-colors">
               Try again
             </button>
           </div>
@@ -1042,9 +1042,9 @@ export default function ChartOfAccountsPage() {
           {/* Buttons */}
           <div className="flex items-center justify-end gap-3 pt-2">
             <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button size="sm" onClick={handleSave} disabled={saving || !formData.code.trim() || !formData.name.trim()}>
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {saving ? 'Saving...' : editingAccount ? 'Update Account' : 'Create Account'}
+            <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending || !formData.code.trim() || !formData.name.trim()}>
+              {saveMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+              {saveMutation.isPending ? 'Saving...' : editingAccount ? 'Update Account' : 'Create Account'}
             </Button>
           </div>
         </div>
@@ -1505,15 +1505,15 @@ export default function ChartOfAccountsPage() {
             )}
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setToggleTarget(null)} disabled={toggling}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={() => setToggleTarget(null)} disabled={toggleMutation.isPending}>Cancel</Button>
               <Button
                 size="sm"
                 onClick={handleToggleConfirm}
-                disabled={toggling}
+                disabled={toggleMutation.isPending}
                 className={toggleTarget.isActive ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-500 hover:bg-green-600'}
               >
-                {toggling && <Loader2 className="w-4 h-4 animate-spin" />}
-                {toggling ? 'Updating...' : toggleTarget.isActive ? 'Yes, Deactivate' : 'Yes, Activate'}
+                {toggleMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                {toggleMutation.isPending ? 'Updating...' : toggleTarget.isActive ? 'Yes, Deactivate' : 'Yes, Activate'}
               </Button>
             </div>
           </div>

@@ -2,6 +2,8 @@ import { Outfit } from 'next/font/google';
 import './globals.css';
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { getQueryClient } from '@/lib/queryClient';
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -35,9 +37,11 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className={`${outfit.className} dark:bg-gray-900`} suppressHydrationWarning>
-        <ThemeProvider>
-          <SidebarProvider>{children}</SidebarProvider>
-        </ThemeProvider>
+         <ThemeProvider>
+           <QueryClientProvider client={getQueryClient()}>
+             <SidebarProvider>{children}</SidebarProvider>
+           </QueryClientProvider>
+         </ThemeProvider>
       </body>
     </html>
   );
