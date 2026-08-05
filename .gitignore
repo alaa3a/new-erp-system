@@ -1,0 +1,21 @@
+node_modules/
+
+# Next.js build output
+.next/
+
+# Databases & backups
+*.sqlite
+*.sqlite.bak
+*.sqlite.bak-*
+
+# Logs
+*.log
+*.tsbuildinfo
+
+# Temp / stray files
+*.docx
+~$*
+Total*uppercase*Status
+
+# SDD scratch files
+.superpowers/sdd/
