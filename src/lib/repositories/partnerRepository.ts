@@ -1,7 +1,6 @@
 import { db } from '../db';
 import { BusinessPartner } from '@/types/erp';
 import { generatePartnerCode } from '../utils/idGenerator';
-import { NotFoundError, ConflictError } from '../utils/errors';
 
 function mapRow(row: any): BusinessPartner {
   return {
@@ -17,8 +16,8 @@ function mapRow(row: any): BusinessPartner {
 
 export const partnerRepository = {
   findAll(search?: string, type?: string): BusinessPartner[] {
-    let sql = 'SELECT * FROM business_partner WHERE status != ?';
-    const params: any[] = ['deleted'];
+    let sql = 'SELECT * FROM business_partner WHERE deletedAt IS NULL';
+    const params: any[] = [];
     if (search) {
       sql += ' AND (name LIKE ? OR code LIKE ? OR email LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
@@ -33,7 +32,7 @@ export const partnerRepository = {
 
   paginate(page: number, pageSize: number, search?: string, type?: string): { data: BusinessPartner[]; total: number } {
     const offset = (page - 1) * pageSize;
-    let where = "WHERE status != 'deleted'";
+    let where = 'WHERE deletedAt IS NULL';
     const params: any[] = [];
     if (search) { where += ' AND (name LIKE ? OR code LIKE ? OR email LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (type) { where += ' AND type = ?'; params.push(type); }
@@ -85,11 +84,17 @@ export const partnerRepository = {
 
   softDelete(id: number, version: number): boolean {
     const now = new Date().toISOString();
-    const result = db.prepare("UPDATE business_partner SET status='deleted', updatedAt=?, version=version+1 WHERE id=? AND version=?").run(now, id, version);
+    const result = db.prepare("UPDATE business_partner SET status='deleted', deletedAt=?, updatedAt=?, version=version+1 WHERE id=? AND version=?").run(now, now, id, version);
+    return result.changes > 0;
+  },
+
+  restore(id: number, version: number): boolean {
+    const now = new Date().toISOString();
+    const result = db.prepare("UPDATE business_partner SET status='active', deletedAt=NULL, updatedAt=?, version=version+1 WHERE id=? AND version=?").run(now, id, version);
     return result.changes > 0;
   },
 
   count(): number {
-    return (db.prepare("SELECT count(1) AS count FROM business_partner WHERE status != 'deleted'").get() as any).count;
+    return (db.prepare('SELECT count(1) AS count FROM business_partner WHERE deletedAt IS NULL').get() as any).count;
   },
 };

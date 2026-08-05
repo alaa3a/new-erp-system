@@ -23,11 +23,11 @@ function mapRow(row: any): Account {
 
 export const accountRepository = {
   findAll(): Account[] {
-    return (db.prepare('SELECT * FROM account WHERE isActive = 1 ORDER BY code ASC').all() as any[]).map(mapRow);
+    return (db.prepare('SELECT * FROM account WHERE deletedAt IS NULL AND isActive = 1 ORDER BY code ASC').all() as any[]).map(mapRow);
   },
 
   findHierarchy(): Account[] {
-    return (db.prepare('SELECT * FROM account ORDER BY code ASC').all() as any[]).map(mapRow);
+    return (db.prepare('SELECT * FROM account WHERE deletedAt IS NULL ORDER BY code ASC').all() as any[]).map(mapRow);
   },
 
   findById(id: number): Account | null {
@@ -84,6 +84,18 @@ export const accountRepository = {
 
   hardDelete(id: number, version: number): boolean {
     const result = db.prepare('DELETE FROM account WHERE id = ? AND version = ?').run(id, version);
+    return result.changes > 0;
+  },
+
+  softDelete(id: number, version: number): boolean {
+    const now = new Date().toISOString();
+    const result = db.prepare('UPDATE account SET isActive=0, deletedAt=?, updatedAt=?, version=version+1 WHERE id=? AND version=?').run(now, now, id, version);
+    return result.changes > 0;
+  },
+
+  restore(id: number, version: number): boolean {
+    const now = new Date().toISOString();
+    const result = db.prepare('UPDATE account SET isActive=1, deletedAt=NULL, updatedAt=?, version=version+1 WHERE id=? AND version=?').run(now, id, version);
     return result.changes > 0;
   },
 

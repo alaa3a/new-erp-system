@@ -282,6 +282,7 @@ function initDb() {
       creditLimit INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'active',
       tags TEXT DEFAULT '[]',
+      deletedAt TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1
@@ -300,6 +301,7 @@ function initDb() {
       isActive INTEGER NOT NULL DEFAULT 1,
       isSystemAccount INTEGER NOT NULL DEFAULT 0,
       description TEXT,
+      deletedAt TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
@@ -347,6 +349,7 @@ function initDb() {
       defaultWarehouseId INTEGER,
       reorderPoint INTEGER NOT NULL DEFAULT 0,
       isActive INTEGER NOT NULL DEFAULT 1,
+      deletedAt TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
@@ -716,6 +719,10 @@ function initDb() {
   `);
   // Migration: add purchaseOrderId to invoice if missing from existing DB
   try { db.exec('ALTER TABLE invoice ADD COLUMN purchaseOrderId INTEGER REFERENCES purchase_order(id)'); } catch { /* column may already exist */ }
+  // Migration: soft-delete support — deletedAt column on key entities
+  try { db.exec('ALTER TABLE product ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE business_partner ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE account ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   // Migration: fix child accounts incorrectly marked as system accounts
   try { db.exec('UPDATE account SET isSystemAccount = 0 WHERE parentId IS NOT NULL AND isSystemAccount = 1'); } catch { /* ignore */ }
   // Migration: tax groups support (tax_code)

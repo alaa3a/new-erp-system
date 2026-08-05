@@ -20,7 +20,7 @@ function mapRow(row: any): Product {
 
 export const productRepository = {
   findAll(search?: string, itemType?: string): Product[] {
-    let sql = 'SELECT * FROM product WHERE isActive = 1';
+    let sql = 'SELECT * FROM product WHERE deletedAt IS NULL';
     const params: any[] = [];
     if (search) {
       sql += ' AND (name LIKE ? OR code LIKE ?)';
@@ -36,7 +36,7 @@ export const productRepository = {
 
   paginate(page: number, pageSize: number, search?: string, itemType?: string): { data: Product[]; total: number } {
     const offset = (page - 1) * pageSize;
-    let where = 'WHERE isActive = 1';
+    let where = 'WHERE deletedAt IS NULL';
     const params: any[] = [];
     if (search) { where += ' AND (name LIKE ? OR code LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
     if (itemType) { where += ' AND itemType = ?'; params.push(itemType); }
@@ -80,7 +80,13 @@ export const productRepository = {
 
   softDelete(id: number, version: number): boolean {
     const now = new Date().toISOString();
-    const result = db.prepare('UPDATE product SET isActive=0, updatedAt=?, version=version+1 WHERE id=? AND version=?').run(now, id, version);
+    const result = db.prepare('UPDATE product SET isActive=0, deletedAt=?, updatedAt=?, version=version+1 WHERE id=? AND version=?').run(now, now, id, version);
+    return result.changes > 0;
+  },
+
+  restore(id: number, version: number): boolean {
+    const now = new Date().toISOString();
+    const result = db.prepare('UPDATE product SET isActive=1, deletedAt=NULL, updatedAt=?, version=version+1 WHERE id=? AND version=?').run(now, id, version);
     return result.changes > 0;
   },
 };
