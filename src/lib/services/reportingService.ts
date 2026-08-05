@@ -82,15 +82,48 @@ export const reportingService = {
     return db.prepare(sql).all(...params);
   },
 
+  getCashFlowReport(startDate: string, endDate: string): { inflows: number; outflows: number; netCashFlow: number; byAccount: Array<{ accountCode: string; accountName: string; inflows: number; outflows: number; net: number }> } {
+    const rows = db.prepare(`
+      SELECT el.accountCode, a.name AS accountName,
+        SUM(el.debitAmount) AS totalDebit,
+        SUM(el.creditAmount) AS totalCredit,
+        SUM(el.debitAmount - el.creditAmount) AS net
+      FROM entry_line el
+      JOIN account a ON a.code = el.accountCode
+      JOIN entry e ON e.id = el.entryId
+      WHERE e.status = 'posted' AND e.entryDate BETWEEN ? AND ?
+        AND a.type = 'asset'
+        AND (a.name LIKE '%Cash%' OR a.name LIKE '%Bank%' OR a.code LIKE '101%')
+      GROUP BY el.accountCode
+      ORDER BY el.accountCode ASC
+    `).all(startDate, endDate) as Array<{ accountCode: string; accountName: string; totalDebit: number; totalCredit: number; net: number }>;
+
+    let inflows = 0;
+    let outflows = 0;
+    const byAccount = rows.map(r => {
+      inflows += r.totalDebit;
+      outflows += r.totalCredit;
+      return {
+        accountCode: r.accountCode,
+        accountName: r.accountName,
+        inflows: r.totalDebit,
+        outflows: r.totalCredit,
+        net: r.net,
+      };
+    });
+
+    return { inflows, outflows, netCashFlow: inflows - outflows, byAccount };
+  },
+
   getPartnerAging: () => agingService.calculatePartnerAging(),
-  getInventoryValuation: () => db.prepare(`SELECT p.code, p.name, w.name AS warehouseName, pws.quantity, pws.averageCost, (pws.quantity * pws.averageCost) AS totalValue FROM product_warehouse_stock pws JOIN product p ON p.id = pws.productId JOIN warehouse w ON w.id = pws.warehouseId WHERE p.itemType = 'stock' AND pws.quantity > 0 ORDER BY p.name`).all(),
+  getInventoryValuation: () => db.prepare(`SELECT p.code, p.name, w.name AS warehouseName, pws.quantity, pws.averageCost, (pws.quantity * pws.averageCost) AS totalValue FROM product_warehouse_stock pws JOIN product p ON p.id = pws.productId JOIN warehouse w ON w.id = pws.warehouseId WHERE p.itemType = 'stock' AND pws.quantity > 0 ORDER BY p.name`).all() as any[],
   getTaxSummary: (startDate?: string, endDate?: string) => {
     let sql = `SELECT el.vatCodeId, tc.code AS taxCode, tc.name AS taxName, tc.rate AS taxRate, tc.type AS taxType, SUM(el.vatAmount) AS totalVat FROM entry_line el LEFT JOIN tax_code tc ON tc.id = el.vatCodeId JOIN entry e ON e.id = el.entryId WHERE e.status = 'posted' AND el.vatAmount > 0`;
     const params: any[] = [];
     if (startDate) { sql += ' AND e.entryDate >= ?'; params.push(startDate); }
     if (endDate) { sql += ' AND e.entryDate <= ?'; params.push(endDate); }
     sql += ' GROUP BY el.vatCodeId ORDER BY tc.type, tc.code ASC';
-    return db.prepare(sql).all(...params);
+    return db.prepare(sql).all(...params) as any[];
   },
 
   /**
@@ -116,7 +149,7 @@ export const reportingService = {
     if (endDate) { sql += ' AND e.entryDate <= ?'; params.push(endDate); }
     if (vatCodeId) { sql += ' AND el.vatCodeId = ?'; params.push(vatCodeId); }
     sql += ' ORDER BY tc.code, e.entryDate DESC, e.entryNumber ASC';
-    return db.prepare(sql).all(...params);
+    return db.prepare(sql).all(...params) as any[];
   },
 
   // Invoice-line based tax summary (taxable + tax amounts per VAT code,
