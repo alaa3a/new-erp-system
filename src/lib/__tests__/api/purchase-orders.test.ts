@@ -312,14 +312,14 @@ describe('Permission Denied Scenarios', () => {
       id: adminRow.id, email: adminRow.email, passwordHash: adminRow.passwordHash,
       firstName: adminRow.firstName, lastName: adminRow.lastName,
       permissionIds: JSON.parse(adminRow.permissionIds || '[]'),
-      isActive: true, lastLoginAt: null,
+      isActive: true, status: 'active', forcePasswordChange: false, lastLoginAt: null,
       createdAt: adminRow.createdAt, updatedAt: adminRow.updatedAt, version: adminRow.version,
     };
 
     limitedUser = {
       id: 999, email: 'limited@test.com', passwordHash: '',
       firstName: 'Limited', lastName: 'User',
-      permissionIds: [], isActive: true, lastLoginAt: null,
+      permissionIds: [], isActive: true, status: 'active', forcePasswordChange: false, lastLoginAt: null,
       createdAt: '', updatedAt: '', version: 1,
     };
   });

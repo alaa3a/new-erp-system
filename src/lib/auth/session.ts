@@ -48,6 +48,8 @@ export function getCurrentUser(request: Request): User | null {
     lastName: row.lastName,
     permissionIds: JSON.parse(row.permissionIds || '[]'),
     isActive: row.isActive === 1,
+    status: row.status || (row.isActive === 1 ? 'active' : 'suspended'),
+    forcePasswordChange: row.forcePasswordChange === 1,
     lastLoginAt: row.lastLoginAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

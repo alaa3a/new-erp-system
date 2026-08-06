@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { entityNameSchema, optionalString } from './common'
+import { entityNameSchema } from './common'
 
 export const createUserSchema = z.object({
   // Optional: users are identified by email + firstName/lastName
@@ -10,6 +10,8 @@ export const createUserSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.enum(['admin', 'user', 'viewer']).optional().default('user'),
   isActive: z.boolean().optional().default(true),
+  status: z.enum(['active', 'suspended', 'pending']).optional().default('active'),
+  forcePasswordChange: z.boolean().optional().default(false),
   permissionIds: z.array(z.number()).optional().default([]),
 })
 

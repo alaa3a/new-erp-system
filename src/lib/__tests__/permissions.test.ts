@@ -20,7 +20,7 @@ describe('Permission System', () => {
       id: admin.id, email: admin.email, passwordHash: admin.passwordHash,
       firstName: admin.firstName, lastName: admin.lastName,
       permissionIds: JSON.parse(admin.permissionIds || '[]'),
-      isActive: true, lastLoginAt: null,
+      isActive: true, status: 'active', forcePasswordChange: false, lastLoginAt: null,
       createdAt: admin.createdAt, updatedAt: admin.updatedAt, version: admin.version,
     };
     expect(hasPermission(adminUser, 'invoice.view')).toBe(true);
@@ -32,7 +32,7 @@ describe('Permission System', () => {
   it('should deny a user without the matching permission', () => {
     const user: User = {
       id: 999, email: 'limited@test.com', passwordHash: '', firstName: 'Limited', lastName: 'User',
-      permissionIds: [], isActive: true, lastLoginAt: null, createdAt: '', updatedAt: '', version: 1,
+      permissionIds: [], isActive: true, status: 'active', forcePasswordChange: false, lastLoginAt: null, createdAt: '', updatedAt: '', version: 1,
     };
     expect(hasPermission(user, 'invoice.view')).toBe(false);
     expect(hasPermission(user, 'invoice.approve')).toBe(false);
@@ -41,7 +41,7 @@ describe('Permission System', () => {
   it('should return a boolean without throwing for any valid key', () => {
     const user: User = {
       id: 1, email: 'test@test.com', passwordHash: '', firstName: 'Test', lastName: 'User',
-      permissionIds: [], isActive: true, lastLoginAt: null, createdAt: '', updatedAt: '', version: 1,
+      permissionIds: [], isActive: true, status: 'active', forcePasswordChange: false, lastLoginAt: null, createdAt: '', updatedAt: '', version: 1,
     };
     expect(typeof hasPermission(user, 'invoice.view')).toBe('boolean');
   });

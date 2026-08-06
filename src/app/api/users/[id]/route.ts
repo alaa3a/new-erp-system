@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { userRepository } from '@/lib/repositories/userRepository';
 import { auditLogRepository } from '@/lib/repositories/userRepository';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
-import { NotFoundError, ValidationError, ConflictError, UnauthorizedError, handleApiError } from '@/lib/utils/errors';
+import { NotFoundError, ConflictError, UnauthorizedError, handleApiError } from '@/lib/utils/errors';
 import { ensureInitialized } from '@/lib/db';
 import { requireAuth } from '@/lib/auth/middleware';
 import { validate, updateUserSchema } from '@/lib/validators';
@@ -70,6 +70,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       firstName: body.firstName || existing.firstName,
       lastName: body.lastName || existing.lastName,
       isActive: body.isActive !== undefined ? body.isActive : existing.isActive,
+      status: body.status || existing.status || (body.isActive !== undefined ? (body.isActive ? 'active' : 'suspended') : existing.status),
+      forcePasswordChange: body.forcePasswordChange !== undefined ? body.forcePasswordChange : existing.forcePasswordChange,
       permissionIds: body.permissionIds || existing.permissionIds,
     };
 

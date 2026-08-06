@@ -7,11 +7,12 @@ import {
   Plus, Loader2, AlertTriangle, CheckCircle,
   Edit3, Trash2, Shield, UserIcon, Lock, Mail,
   ChevronDown, ChevronRight, Eye, EyeOff, RefreshCw, Check,
+  Copy, KeyRound,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { useToast } from '@/components/ui/toast/ToastProvider'
-import type { User, Permission } from '@/types/erp'
+import type { User, Permission, UserStatus } from '@/types/erp'
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -22,6 +23,8 @@ interface UserFormData {
   firstName: string
   lastName: string
   isActive: boolean
+  status: UserStatus
+  forcePasswordChange: boolean
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -33,6 +36,8 @@ const emptyForm = (): UserFormData => ({
   firstName: '',
   lastName: '',
   isActive: true,
+  status: 'active',
+  forcePasswordChange: false,
 })
 
 const generatePassword = (): string => {
@@ -78,7 +83,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('active')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'pending'>('all')
 
   // Form
   const [showForm, setShowForm] = useState(false)
@@ -139,8 +144,9 @@ export default function UsersPage() {
   // ── Filtered users ──
   const filteredUsers = useMemo(() => {
     let list = users
-    if (statusFilter === 'active') list = list.filter(u => u.isActive)
-    if (statusFilter === 'inactive') list = list.filter(u => !u.isActive)
+    if (statusFilter === 'active') list = list.filter(u => u.status === 'active')
+    if (statusFilter === 'suspended') list = list.filter(u => u.status === 'suspended')
+    if (statusFilter === 'pending') list = list.filter(u => u.status === 'pending')
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       list = list.filter(u =>
@@ -173,6 +179,8 @@ export default function UsersPage() {
       firstName: user.firstName,
       lastName: user.lastName,
       isActive: user.isActive,
+      status: user.status || (user.isActive ? 'active' : 'suspended'),
+      forcePasswordChange: user.forcePasswordChange || false,
     })
     setFormError('')
     setShowPassword(false)
@@ -188,6 +196,7 @@ export default function UsersPage() {
     setShowPassword(false)
     setShowConfirmPassword(false)
     setRequirePasswordChange(false)
+    setFormData(emptyForm())
   }
 
   // ── Save user info ──
@@ -219,6 +228,8 @@ export default function UsersPage() {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         isActive: formData.isActive,
+        status: formData.status,
+        forcePasswordChange: formData.forcePasswordChange,
       }
 
       if (formData.password) {
@@ -264,13 +275,15 @@ export default function UsersPage() {
   const handleToggleActive = async () => {
     if (!toggleTarget) return
     setToggling(true)
+    const newStatus = toggleTarget.status === 'active' ? 'suspended' : 'active'
     try {
       const res = await fetch(`/api/users/${toggleTarget.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'toggleActive',
-          isActive: !toggleTarget.isActive,
+          isActive: newStatus === 'active',
+          status: newStatus,
         }),
       })
       if (!res.ok) {
@@ -280,7 +293,7 @@ export default function UsersPage() {
       setToggleTarget(null)
       await fetchData()
       const fullName = `${toggleTarget.firstName} ${toggleTarget.lastName}`.trim()
-      toast.success(toggleTarget.isActive ? `User "${fullName}" deactivated` : `User "${fullName}" activated`)
+      toast.success(toggleTarget.status === 'active' ? `User "${fullName}" suspended` : `User "${fullName}" activated`)
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update user')
     } finally {
@@ -435,7 +448,7 @@ export default function UsersPage() {
 
       {/* Filters + Search */}
       <div className="flex items-center gap-2 flex-wrap rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2.5">
-        {(['all', 'active', 'inactive'] as const).map(f => (
+        {(['all', 'active', 'suspended', 'pending'] as const).map(f => (
           <button key={f} onClick={() => setStatusFilter(f)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
               statusFilter === f
@@ -470,6 +483,7 @@ export default function UsersPage() {
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Last Login</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Created</th>
                   <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
                   <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Permissions</th>
                   <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
@@ -478,7 +492,7 @@ export default function UsersPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center">
+                    <td colSpan={8} className="py-10 text-center">
                       <UserIcon className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         {users.length === 0
@@ -487,63 +501,92 @@ export default function UsersPage() {
                             ? 'No users match your search'
                             : statusFilter === 'active'
                               ? 'No active users'
-                              : statusFilter === 'inactive'
-                                ? 'No inactive users'
-                                : 'No users match the current filter'}
+                              : statusFilter === 'suspended'
+                                ? 'No suspended users'
+                                : statusFilter === 'pending'
+                                  ? 'No pending users'
+                                  : 'No users match the current filter'}
                       </p>
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map(user => (
-                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                      <td className="py-3 px-4 text-sm text-gray-500 dark:text-gray-400 font-mono">{user.id}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="rounded-full bg-brand-50 dark:bg-brand-950/30 p-2">
-                            <UserIcon className="w-4 h-4 text-brand-500" />
+                  filteredUsers.map(user => {
+                    const statusColor = user.status === 'active'
+                      ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400'
+                      : user.status === 'suspended'
+                        ? 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
+                        : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400'
+                    const statusLabel = user.status === 'active' ? 'Active' : user.status === 'suspended' ? 'Suspended' : 'Pending'
+                    return (
+                      <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <td className="py-3 px-4 text-sm text-gray-500 dark:text-gray-400 font-mono">{user.id}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="rounded-full bg-brand-50 dark:bg-brand-950/30 p-2">
+                              <UserIcon className="w-4 h-4 text-brand-500" />
+                            </div>
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">
+                              {user.firstName} {user.lastName}
+                            </p>
                           </div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            {user.firstName} {user.lastName}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">{user.email}</td>
-                      <td className="py-3 px-4 text-sm text-gray-500 dark:text-gray-400">
-                        {user.lastLoginAt ? formatDate(user.lastLoginAt, 'datetime') : 'Never'}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <StatusBadge label={user.isActive ? 'Active' : 'Inactive'} color={user.isActive ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400' : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'} />
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400">
-                          <Shield className="w-3 h-3" />
-                          {user.permissionIds.length}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openEditForm(user)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
-                            title="Edit user info">
-                            <Edit3 className="w-3.5 h-3.5" />
-                            Edit
-                          </button>
-                          <button onClick={() => openPermissionsModal(user)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
-                            title="Manage permissions">
-                            <Shield className="w-3.5 h-3.5" />
-                            Permissions
-                          </button>
-                          <button onClick={() => setToggleTarget(user)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
-                            title={user.isActive ? 'Deactivate' : 'Activate'}><CheckCircle className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => setDeleteTarget(user)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                            title="Delete user"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">{user.email}</td>
+                        <td className="py-3 px-4 text-sm text-gray-500 dark:text-gray-400">
+                          {user.lastLoginAt ? formatDate(user.lastLoginAt, 'datetime') : 'Never'}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-500 dark:text-gray-400">
+                          {formatDate(user.createdAt, 'short')}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <StatusBadge label={statusLabel} color={statusColor} />
+                            {user.forcePasswordChange && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400" title="Password change required">
+                                <KeyRound className="w-2.5 h-2.5" />
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400">
+                            <Shield className="w-3 h-3" />
+                            {user.permissionIds.length}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => {
+                              const text = `Email: ${user.email}\nPassword: (hidden — use "Generate" in edit to create temp password)`
+                              navigator.clipboard.writeText(text)
+                              toast.success('Credentials info copied')
+                            }}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+                              title="Copy credentials info">
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => openEditForm(user)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
+                              title="Edit user info">
+                              <Edit3 className="w-3.5 h-3.5" />
+                              Edit
+                            </button>
+                            <button onClick={() => openPermissionsModal(user)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
+                              title="Manage permissions">
+                              <Shield className="w-3.5 h-3.5" />
+                              Permissions
+                            </button>
+                            <button onClick={() => setToggleTarget(user)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+                              title={user.status === 'active' ? 'Suspend' : 'Activate'}><CheckCircle className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setDeleteTarget(user)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                              title="Delete user"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -699,13 +742,38 @@ export default function UsersPage() {
 
           {/* ── Status ── */}
           <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Account Status
+            </label>
+            <select value={formData.status}
+              onChange={e => {
+                const status = e.target.value as UserStatus
+                setFormData(prev => ({ ...prev, status, isActive: status === 'active' }))
+              }}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+            >
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="pending">Pending</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1">
+              {formData.status === 'active' && 'User can sign in and access the system'}
+              {formData.status === 'suspended' && 'User cannot sign in — account is locked'}
+              {formData.status === 'pending' && 'User has not yet activated their account'}
+            </p>
+          </div>
+
+          {/* ── Force password change ── */}
+          <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={formData.isActive}
-                onChange={e => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+              <input type="checkbox" checked={formData.forcePasswordChange}
+                onChange={e => setFormData(prev => ({ ...prev, forcePasswordChange: e.target.checked }))}
                 className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500 w-4 h-4" />
               <div>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">Active</span>
-                <p className="text-xs text-gray-400">Inactive users cannot sign in to the system</p>
+                <span className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-gray-400" /> Force password change
+                </span>
+                <p className="text-xs text-gray-400">User will be forced to set a new password on next login</p>
               </div>
             </label>
           </div>
@@ -869,7 +937,7 @@ export default function UsersPage() {
       </Modal>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          TOGGLE ACTIVE CONFIRMATION
+          TOGGLE STATUS CONFIRMATION
          ═══════════════════════════════════════════════════════════════════ */}
       <Modal isOpen={!!toggleTarget} onClose={() => setToggleTarget(null)} className="max-w-md p-6">
         {toggleTarget && (
@@ -880,22 +948,22 @@ export default function UsersPage() {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {toggleTarget.isActive ? 'Deactivate User' : 'Activate User'}
+                  {toggleTarget.status === 'active' ? 'Suspend User' : 'Activate User'}
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">{toggleTarget.firstName} {toggleTarget.lastName}</p>
               </div>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              {toggleTarget.isActive
-                ? `Are you sure you want to deactivate ${toggleTarget.firstName} ${toggleTarget.lastName}? They will not be able to sign in.`
+              {toggleTarget.status === 'active'
+                ? `Are you sure you want to suspend ${toggleTarget.firstName} ${toggleTarget.lastName}? They will not be able to sign in.`
                 : `Are you sure you want to activate ${toggleTarget.firstName} ${toggleTarget.lastName}? They will be able to sign in again.`
               }
             </p>
             <div className="flex items-center justify-end gap-3 pt-2">
               <Button variant="outline" size="sm" onClick={() => setToggleTarget(null)}>Cancel</Button>
               <Button size="sm" onClick={handleToggleActive} disabled={toggling}
-                className={toggleTarget.isActive ? '!bg-amber-500 hover:!bg-amber-600' : '!bg-green-600 hover:!bg-green-700'}>
-                {toggling ? 'Updating...' : toggleTarget.isActive ? 'Deactivate' : 'Activate'}
+                className={toggleTarget.status === 'active' ? '!bg-amber-500 hover:!bg-amber-600' : '!bg-green-600 hover:!bg-green-700'}>
+                {toggling ? 'Updating...' : toggleTarget.status === 'active' ? 'Suspend' : 'Activate'}
               </Button>
             </div>
           </div>

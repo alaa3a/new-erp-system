@@ -249,6 +249,8 @@ function initDb() {
       lastName TEXT NOT NULL,
       permissionIds TEXT NOT NULL DEFAULT '[]',
       isActive INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active',
+      forcePasswordChange INTEGER NOT NULL DEFAULT 0,
       lastLoginAt TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
@@ -782,6 +784,11 @@ function initDb() {
     const categories = db.prepare('SELECT id, code FROM entry_category').all() as { id: number; code: string }[];
     for (const c of categories) ensureCategorySequence(c.id, c.code);
   } catch { /* ignore */ }
+  // Migration: user account status (active/suspended/pending) + force password change flag
+  try { db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE users ADD COLUMN forcePasswordChange INTEGER NOT NULL DEFAULT 0'); } catch { /* column may already exist */ }
+  // Backfill status from isActive for existing users
+  try { db.exec("UPDATE users SET status = CASE WHEN isActive = 1 THEN 'active' ELSE 'suspended' END WHERE status = 'active' AND isActive = 0"); } catch { /* ignore */ }
   // Migration: permissions added after the initial seed — INSERT OR IGNORE so
   // existing DBs gain them without touching the seeded rows.
   try {

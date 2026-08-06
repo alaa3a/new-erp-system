@@ -45,6 +45,8 @@ export async function POST(request: NextRequest) {
       lastName: body.lastName,
       permissionIds: body.permissionIds,
       isActive: body.isActive,
+      status: body.status,
+      forcePasswordChange: body.forcePasswordChange,
     });
 
     auditLogRepository.log({ userId: auth.userId, action: 'create', entityType: 'user', entityId: id });

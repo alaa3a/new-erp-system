@@ -57,6 +57,8 @@ export interface DocumentSequence {
   version: number;
 }
 
+export type UserStatus = 'active' | 'suspended' | 'pending';
+
 export interface User {
   id: number;
   email: string;
@@ -65,6 +67,8 @@ export interface User {
   lastName: string;
   permissionIds: number[];
   isActive: boolean;
+  status: UserStatus;
+  forcePasswordChange: boolean;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
