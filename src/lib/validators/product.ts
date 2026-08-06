@@ -16,6 +16,9 @@ export const createProductSchema = z.object({
   warehouseId: z.number().int().positive().nullable().optional().default(null),
   minStock: z.number().int().min(0).optional().default(0),
   isActive: z.boolean().optional().default(true),
+  parentId: z.number().int().positive().nullable().optional().default(null),
+  isCategory: z.boolean().optional().default(false),
+  profileId: z.number().int().positive().nullable().optional().default(null),
 })
 
 export const updateProductSchema = createProductSchema.partial()

@@ -351,11 +351,35 @@ function initDb() {
       defaultWarehouseId INTEGER,
       reorderPoint INTEGER NOT NULL DEFAULT 0,
       isActive INTEGER NOT NULL DEFAULT 1,
+      parentId INTEGER,
+      isCategory INTEGER NOT NULL DEFAULT 0,
       deletedAt TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
-      FOREIGN KEY(defaultWarehouseId) REFERENCES warehouse(id)
+      FOREIGN KEY(defaultWarehouseId) REFERENCES warehouse(id),
+      FOREIGN KEY(parentId) REFERENCES product(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS product_profile (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      itemType TEXT DEFAULT 'stock',
+      unitOfMeasure TEXT DEFAULT 'pcs',
+      salesVatCodeId INTEGER,
+      purchaseVatCodeId INTEGER,
+      defaultWarehouseId INTEGER,
+      defaultSalesPrice INTEGER DEFAULT 0,
+      defaultPurchasePrice INTEGER DEFAULT 0,
+      reorderPoint INTEGER DEFAULT 0,
+      isActive INTEGER DEFAULT 1,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (salesVatCodeId) REFERENCES tax_code(id),
+      FOREIGN KEY (purchaseVatCodeId) REFERENCES tax_code(id),
+      FOREIGN KEY (defaultWarehouseId) REFERENCES warehouse(id)
     );
 
     CREATE TABLE IF NOT EXISTS product_warehouse_stock (
@@ -719,6 +743,24 @@ function initDb() {
       (4, '61-90 days', 61, 90, 4, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z'),
       (5, '90+ days', 91, 999999, 5, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z');
 
+    CREATE TABLE IF NOT EXISTS product_profile (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      itemType TEXT DEFAULT 'stock',
+      unitOfMeasure TEXT DEFAULT 'pcs',
+      salesVatCodeId INTEGER REFERENCES tax_code(id),
+      purchaseVatCodeId INTEGER REFERENCES tax_code(id),
+      defaultWarehouseId INTEGER REFERENCES warehouse(id),
+      defaultSalesPrice INTEGER DEFAULT 0,
+      defaultPurchasePrice INTEGER DEFAULT 0,
+      reorderPoint INTEGER DEFAULT 0,
+      isActive INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS task (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -737,8 +779,13 @@ function initDb() {
   `);
   // Migration: add purchaseOrderId to invoice if missing from existing DB
   try { db.exec('ALTER TABLE invoice ADD COLUMN purchaseOrderId INTEGER REFERENCES purchase_order(id)'); } catch { /* column may already exist */ }
+  // Migration: product profiles (template for product creation)
+  try { db.exec('ALTER TABLE product ADD COLUMN profileId INTEGER REFERENCES product_profile(id)'); } catch { /* column may already exist */ }
   // Migration: soft-delete support — deletedAt column on key entities
   try { db.exec('ALTER TABLE product ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
+  // Migration: product categories (parent-child hierarchy)
+  try { db.exec('ALTER TABLE product ADD COLUMN parentId INTEGER REFERENCES product(id) ON DELETE SET NULL'); } catch { /* column may already exist */ }
+  try { db.exec('ALTER TABLE product ADD COLUMN isCategory INTEGER NOT NULL DEFAULT 0'); } catch { /* column may already exist */ }
   try { db.exec('ALTER TABLE business_partner ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   try { db.exec('ALTER TABLE account ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   // Migration: fix child accounts incorrectly marked as system accounts
@@ -1000,6 +1047,23 @@ function seedInitialData() {
     notifStmt.run(adminId, 'warning', 'Tax Codes Setup', 'Reminder: Review and verify tax codes before processing invoices.', 'tax_code', 1, 0, twoDaysAgo);
   }
 
+  // Seed product profiles
+  const profileCount = db.prepare('SELECT count(1) AS count FROM product_profile').get<{ count: number }>()?.count ?? 0;
+  if (profileCount === 0) {
+    const wh = db.prepare('SELECT id FROM warehouse LIMIT 1').get<{ id: number }>();
+    const whId = wh?.id || null;
+    const vat = db.prepare('SELECT id FROM tax_code LIMIT 1').get<{ id: number }>();
+    const vatId = vat?.id || null;
+    const vat2 = db.prepare('SELECT id FROM tax_code ORDER BY id LIMIT 1 OFFSET 1').get<{ id: number }>();
+    const vat2Id = vat2?.id || null;
+    const pStmt = db.prepare('INSERT INTO product_profile (code, name, description, itemType, unitOfMeasure, salesVatCodeId, purchaseVatCodeId, defaultWarehouseId, reorderPoint, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const now2 = new Date().toISOString();
+    pStmt.run('STD', 'Standard Product', 'Default product with standard tax', 'stock', 'pcs', vatId, vatId, whId, 10, now2, now2);
+    pStmt.run('EXM', 'Tax Exempt', 'Zero-rated product', 'stock', 'pcs', null, null, whId, 10, now2, now2);
+    pStmt.run('SVC', 'Service', 'Service item (no stock)', 'service', 'hrs', vatId, null, null, 0, now2, now2);
+    pStmt.run('IMP', 'Import Goods', 'Imported products with customs', 'stock', 'pcs', vat2Id, vat2Id, whId, 20, now2, now2);
+  }
+
   const taskCount = db.prepare('SELECT count(1) AS count FROM task').get<{ count: number }>()?.count ?? 0;
   if (taskCount === 0) {
     const admin = db.prepare('SELECT id FROM users WHERE email = ?').get<{ id: number }>('admin@erp.local');
@@ -1062,6 +1126,21 @@ function seedInitialData() {
   // NOTE: No tax_code seed. The tax table intentionally starts empty so users
   // create their own tax groups and types (avoids a protected system "VAT"
   // group that cannot be deleted from the UI).
+
+  // Seed product categories (parent-child hierarchy)
+  const catCount = db.prepare("SELECT count(1) AS count FROM product WHERE isCategory = 1").get<{ count: number }>()?.count ?? 0;
+  if (catCount === 0) {
+    const now = new Date().toISOString();
+    const categories: [string, string][] = [
+      ['CAT-ELEC', 'Electronics'],
+      ['CAT-CLOTH', 'Clothing'],
+      ['CAT-SERV', 'Services'],
+    ];
+    const catStmt = db.prepare('INSERT INTO product (code, name, itemType, unitOfMeasure, isCategory, isActive, createdAt, updatedAt, version) VALUES (?, ?, \'stock\', \'pcs\', 1, 1, ?, ?, 1)');
+    for (const [code, name] of categories) {
+      catStmt.run(code, name, now, now);
+    }
+  }
 }
 
 /** Reset the database module state for testing. Only use in test suites. */

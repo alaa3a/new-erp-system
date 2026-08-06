@@ -14,6 +14,24 @@ export type PeriodStatus = 'open' | 'closed' | 'locked';
 export type AuditAction = 'create' | 'update' | 'delete' | 'post' | 'cancel';
 export type EntryLineType = 'normal' | 'tax' | 'payment';
 
+export interface ProductProfile {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  itemType: 'stock' | 'service';
+  unitOfMeasure: string;
+  salesVatCodeId: number | null;
+  purchaseVatCodeId: number | null;
+  defaultWarehouseId: number | null;
+  defaultSalesPrice: number;
+  defaultPurchasePrice: number;
+  reorderPoint: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Company {
   id: number;
   name: string;
@@ -167,9 +185,30 @@ export interface Product {
   defaultWarehouseId: number | null;
   reorderPoint: number;
   isActive: boolean;
+  parentId: number | null;
+  isCategory: boolean;
+  profileId: number | null;
   createdAt: string;
   updatedAt: string;
   version: number;
+}
+
+export interface ProductProfile {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  itemType: ItemType;
+  unitOfMeasure: string;
+  salesVatCodeId: number | null;
+  purchaseVatCodeId: number | null;
+  defaultWarehouseId: number | null;
+  defaultSalesPrice: number;
+  defaultPurchasePrice: number;
+  reorderPoint: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProductWarehouseStock {
