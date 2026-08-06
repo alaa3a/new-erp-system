@@ -1,7 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import {
@@ -13,11 +12,14 @@ import {
   PlugInIcon,
 } from "../icons/index";
 
+type SubNavItem = { name: string; path: string; permission?: string };
+
 type NavItem = {
   name: string;
   icon: React.ReactNode;
   path?: string;
-  subItems?: { name: string; path: string }[];
+  permission?: string;
+  subItems?: SubNavItem[];
 };
 
 const navItems: NavItem[] = [
@@ -29,80 +31,79 @@ const navItems: NavItem[] = [
   {
     name: "Products",
     icon: <BoxCubeIcon />,
+    permission: "product.view",
     subItems: [
-      { name: "Products", path: "/products" },
-      { name: "Warehouses", path: "/warehouses" },
-      { name: "Inventory Movements", path: "/inventory/movements" },
-      { name: "Stock Adjustments", path: "/inventory/stock-adjustments" },
+      { name: "Products", path: "/products", permission: "product.view" },
+      { name: "Warehouses", path: "/warehouses", permission: "warehouse.view" },
+      { name: "Inventory Movements", path: "/inventory/movements", permission: "inventory.view" },
+      { name: "Stock Adjustments", path: "/inventory/stock-adjustments", permission: "inventory.adjust" },
     ],
   },
   {
     name: "Partners",
     icon: <BoxCubeIcon />,
+    permission: "partner.view",
     subItems: [
-      { name: "Business Partners", path: "/business-partners" },
-      { name: "Employees", path: "/settings/employees" },
+      { name: "Business Partners", path: "/business-partners", permission: "partner.view" },
+      { name: "Employees", path: "/settings/employees", permission: "employee.view" },
     ],
   },
   {
     name: "Accounting",
     icon: <BoxCubeIcon />,
+    permission: "account.view",
     subItems: [
-      { name: "Chart of Accounts", path: "/accounting/chart-of-accounts" },
-      { name: "Cost Centers", path: "/accounting/cost-centers" },
-      { name: "Entries", path: "/accounting/entries" },
+      { name: "Chart of Accounts", path: "/accounting/chart-of-accounts", permission: "account.view" },
+      { name: "Cost Centers", path: "/accounting/cost-centers", permission: "costCenter.view" },
+      { name: "Entries", path: "/accounting/entries", permission: "entry.view" },
     ],
   },
   {
     name: "Invoice",
     icon: <ListIcon />,
+    permission: "invoice.view",
     subItems: [
-      { name: "Purchase Orders", path: "/purchase-orders" },
-      { name: "Sales", path: "/invoice/sales" },
-      { name: "Purchase", path: "/invoice/purchase" },
-      { name: "Credit Note", path: "/invoice/credit-note" },
-      { name: "Debit Note", path: "/invoice/debit-note" },
+      { name: "Purchase Orders", path: "/purchase-orders", permission: "purchaseOrder.view" },
+      { name: "Sales", path: "/invoice/sales", permission: "invoice.view" },
+      { name: "Purchase", path: "/invoice/purchase", permission: "invoice.view" },
+      { name: "Credit Note", path: "/invoice/credit-note", permission: "invoice.view" },
+      { name: "Debit Note", path: "/invoice/debit-note", permission: "invoice.view" },
     ],
   },
   {
     name: "Report",
     icon: <PieChartIcon />,
+    permission: "report.view",
     subItems: [
-      { name: "Ledger", path: "/report/ledger" },
-      { name: "Trial Balance", path: "/report/trial-balance" },
-      { name: "Income Statement", path: "/report/income-statement" },
-      { name: "Balance Sheet", path: "/report/balance-sheet" },
-      { name: "Aging & Analysis", path: "/report/aging" },
-      { name: "Inventory Valuation", path: "/report/inventory-valuation" },
-      { name: "Tax Summary", path: "/report/tax-summary" },
+      { name: "Ledger", path: "/report/ledger", permission: "report.view" },
+      { name: "Trial Balance", path: "/report/trial-balance", permission: "report.view" },
+      { name: "Income Statement", path: "/report/income-statement", permission: "report.view" },
+      { name: "Balance Sheet", path: "/report/balance-sheet", permission: "report.view" },
+      { name: "Aging & Analysis", path: "/report/aging", permission: "report.view" },
+      { name: "Inventory Valuation", path: "/report/inventory-valuation", permission: "report.view" },
+      { name: "Tax Summary", path: "/report/tax-summary", permission: "report.view" },
     ],
   },
   {
     icon: <PieChartIcon />,
     name: "Audit",
+    permission: "audit.view",
     subItems: [
-      { name: "Audit Log", path: "/audit" },
+      { name: "Audit Log", path: "/audit", permission: "audit.view" },
     ],
   },
   {
     icon: <PlugInIcon />,
     name: "Settings",
+    permission: "settings.view",
     subItems: [
-      { name: "Posting Profiles", path: "/settings/posting-profiles" },
-      { name: "Tax Setup", path: "/settings/tax-setup" },
-      { name: "Entry Categories", path: "/settings/entry-categories" },
-      { name: "Document Sequences", path: "/settings/document-sequences" },
-      { name: "System Settings", path: "/settings" },
-      { name: "User Management", path: "/users" },
+      { name: "Posting Profiles", path: "/settings/posting-profiles", permission: "settings.view" },
+      { name: "Tax Setup", path: "/settings/tax-setup", permission: "settings.view" },
+      { name: "Entry Categories", path: "/settings/entry-categories", permission: "settings.view" },
+      { name: "Document Sequences", path: "/settings/document-sequences", permission: "settings.view" },
+      { name: "System Settings", path: "/settings", permission: "settings.view" },
+      { name: "User Management", path: "/users", permission: "user.view" },
       { name: "My Profile", path: "/profile" },
-    ],
-  },
-  {
-    icon: <PlugInIcon />,
-    name: "Authentication",
-    subItems: [
-      { name: "Sign In", path: "/signin" },
-      { name: "Reset Password", path: "/reset-password" },
     ],
   },
 ];
@@ -110,12 +111,46 @@ const navItems: NavItem[] = [
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
 
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const isActive = useCallback((path: string) => path === pathname, [pathname]);
+
+  useEffect(() => {
+    async function loadPermissions() {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data?.permissionIds) {
+            const perms = await fetch("/api/permissions");
+            if (perms.ok) {
+              const permData = await perms.json();
+              if (permData.success) {
+                const permMap = new Map(permData.data.map((p: any) => [p.id, p.key]));
+                setUserPermissions(data.data.permissionIds.map((id: number) => permMap.get(id)).filter(Boolean));
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadPermissions();
+  }, []);
+
+  const hasPermission = (key?: string) => !key || userPermissions.includes(key);
+
+  const filteredNavItems = navItems
+    .map((nav) => ({
+      ...nav,
+      subItems: nav.subItems?.filter((sub) => hasPermission(sub.permission)),
+    }))
+    .filter((nav) => hasPermission(nav.permission) && (!nav.subItems || nav.subItems.length > 0));
 
   useEffect(() => {
     let matched = false;
@@ -179,7 +214,7 @@ const AppSidebar: React.FC = () => {
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <ul className="flex flex-col gap-4">
-            {navItems.map((nav, index) => (
+            {filteredNavItems.map((nav, index) => (
               <li key={nav.name}>
                 {nav.subItems ? (
                   <button
