@@ -107,6 +107,7 @@ const navItems: NavItem[] = [
       { name: "Tax Setup", path: "/settings/tax-setup", permission: "settings.manage" },
       { name: "Entry Categories", path: "/settings/entry-categories", permission: "settings.manage" },
       { name: "Document Sequences", path: "/settings/document-sequences", permission: "settings.manage" },
+      { name: "Product Profiles", path: "/settings/product-profiles", permission: "settings.manage" },
       { name: "System Settings", path: "/settings", permission: "settings.manage" },
       { name: "User Management", path: "/users", permission: "user.view" },
       { name: "My Profile", path: "/profile" },
