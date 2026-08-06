@@ -520,3 +520,22 @@ export interface Notification {
   isRead: boolean;
   createdAt: string;
 }
+
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface Task {
+  id: number;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignedTo: number | null;
+  assignedToName: string | null;
+  createdBy: number | null;
+  createdByName: string | null;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

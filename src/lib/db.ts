@@ -718,6 +718,22 @@ function initDb() {
       (3, '31-60 days', 31, 60, 3, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z'),
       (4, '61-90 days', 61, 90, 4, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z'),
       (5, '90+ days', 91, 999999, 5, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z');
+
+    CREATE TABLE IF NOT EXISTS task (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT DEFAULT 'todo',
+      priority TEXT DEFAULT 'medium',
+      assignedTo INTEGER,
+      createdBy INTEGER,
+      dueDate TEXT,
+      completedAt TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (assignedTo) REFERENCES users(id),
+      FOREIGN KEY (createdBy) REFERENCES users(id)
+    );
   `);
   // Migration: add purchaseOrderId to invoice if missing from existing DB
   try { db.exec('ALTER TABLE invoice ADD COLUMN purchaseOrderId INTEGER REFERENCES purchase_order(id)'); } catch { /* column may already exist */ }
@@ -978,6 +994,23 @@ function seedInitialData() {
     notifStmt.run(adminId, 'info', 'Chart of Accounts Ready', 'Standard chart of accounts has been pre-loaded. You can customize it anytime.', 'account', 1, 0, oneHourAgo);
     notifStmt.run(adminId, 'info', 'Fiscal Periods Available', 'Fiscal periods for the current year are ready for transactions.', 'fiscal_period', 1, 0, dayAgo);
     notifStmt.run(adminId, 'warning', 'Tax Codes Setup', 'Reminder: Review and verify tax codes before processing invoices.', 'tax_code', 1, 0, twoDaysAgo);
+  }
+
+  const taskCount = db.prepare('SELECT count(1) AS count FROM task').get<{ count: number }>()?.count ?? 0;
+  if (taskCount === 0) {
+    const admin = db.prepare('SELECT id FROM users WHERE email = ?').get<{ id: number }>('admin@erp.local');
+    const adminId = admin?.id || 1;
+    const now = new Date().toISOString();
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const nextWeek = new Date(Date.now() + 604800000).toISOString().slice(0, 10);
+    const twoWeeks = new Date(Date.now() + 1209600000).toISOString().slice(0, 10);
+
+    const taskStmt = db.prepare('INSERT INTO task (title, description, status, priority, assignedTo, createdBy, dueDate, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    taskStmt.run('Setup company configuration', 'Complete company profile, fiscal year, and default settings', 'done', 'high', adminId, adminId, tomorrow, now, now);
+    taskStmt.run('Review chart of accounts', 'Verify imported chart of accounts and customize as needed', 'in_progress', 'medium', adminId, adminId, nextWeek, now, now);
+    taskStmt.run('Configure tax codes', 'Set up VAT rates and tax groups for your jurisdiction', 'todo', 'urgent', adminId, adminId, tomorrow, now, now);
+    taskStmt.run('Add business partners', 'Create customer and vendor records for existing relationships', 'todo', 'medium', adminId, adminId, twoWeeks, now, now);
+    taskStmt.run('Review user permissions', 'Verify admin permissions and create accounts for team members', 'todo', 'low', adminId, adminId, twoWeeks, now, now);
   }
 
   const acctCount = db.prepare('SELECT count(1) AS count FROM account').get<{ count: number }>()?.count ?? 0;
