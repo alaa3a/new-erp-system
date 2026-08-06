@@ -4,16 +4,14 @@ import { formatDate } from '@/lib/formatters'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-   Plus, Loader2, AlertTriangle, CheckCircle,
-  Edit3, Trash2, X, Shield, UserIcon, Lock, Mail,
+  Plus, Loader2, AlertTriangle, CheckCircle,
+  Edit3, Trash2, Shield, UserIcon, Lock, Mail,
+  ChevronDown, ChevronRight, Eye, EyeOff, RefreshCw, Check,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import type { User, Permission } from '@/types/erp'
-
-// ─── Constants ─────────────────────────────────────────────────────────
-
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -24,7 +22,6 @@ interface UserFormData {
   firstName: string
   lastName: string
   isActive: boolean
-  permissionIds: number[]
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -36,8 +33,41 @@ const emptyForm = (): UserFormData => ({
   firstName: '',
   lastName: '',
   isActive: true,
-  permissionIds: [],
 })
+
+const generatePassword = (): string => {
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const lower = 'abcdefghijklmnopqrstuvwxyz'
+  const numbers = '0123456789'
+  const symbols = '!@#$%^&*'
+  const all = upper + lower + numbers + symbols
+  let password = ''
+  password += upper[Math.floor(Math.random() * upper.length)]
+  password += lower[Math.floor(Math.random() * lower.length)]
+  password += numbers[Math.floor(Math.random() * numbers.length)]
+  password += symbols[Math.floor(Math.random() * symbols.length)]
+  for (let i = 4; i < 12; i++) {
+    password += all[Math.floor(Math.random() * all.length)]
+  }
+  return password.split('').sort(() => Math.random() - 0.5).join('')
+}
+
+type PasswordStrength = 'weak' | 'medium' | 'strong'
+
+const getPasswordStrength = (password: string): { strength: PasswordStrength; score: number; requirements: { label: string; met: boolean }[] } => {
+  const requirements = [
+    { label: 'At least 8 characters', met: password.length >= 8 },
+    { label: 'Uppercase letter', met: /[A-Z]/.test(password) },
+    { label: 'Lowercase letter', met: /[a-z]/.test(password) },
+    { label: 'Number', met: /[0-9]/.test(password) },
+    { label: 'Special character', met: /[^A-Za-z0-9]/.test(password) },
+  ]
+  const metCount = requirements.filter(r => r.met).length
+  let strength: PasswordStrength = 'weak'
+  if (metCount >= 5) strength = 'strong'
+  else if (metCount >= 3) strength = 'medium'
+  return { strength, score: metCount, requirements }
+}
 
 // ─── Main Component ─────────────────────────────────────────────────────
 
@@ -48,8 +78,6 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  // Default to 'Active' so soft-deleted (deactivated) users stay hidden after refresh;
-  // switch to 'Inactive' to view/reactivate them.
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('active')
 
   // Form
@@ -58,6 +86,9 @@ export default function UsersPage() {
   const [formData, setFormData] = useState<UserFormData>(emptyForm())
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [requirePasswordChange, setRequirePasswordChange] = useState(false)
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
@@ -65,6 +96,12 @@ export default function UsersPage() {
   // Toggle active
   const [toggleTarget, setToggleTarget] = useState<User | null>(null)
   const [toggling, setToggling] = useState(false)
+
+  // Permissions modal
+  const [permissionsModalUser, setPermissionsModalUser] = useState<User | null>(null)
+  const [permissionIds, setPermissionIds] = useState<number[]>([])
+  const [permissionSubmitting, setPermissionSubmitting] = useState(false)
+  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({})
 
   // ── Permissions grouped by module ──
   const permissionsByModule = useMemo(() => {
@@ -116,32 +153,14 @@ export default function UsersPage() {
     return list
   }, [users, statusFilter, searchQuery])
 
-  // ── Toggle permission ──
-  const togglePermission = (permId: number) => {
-    setFormData(prev => ({
-      ...prev,
-      permissionIds: prev.permissionIds.includes(permId)
-        ? prev.permissionIds.filter(id => id !== permId)
-        : [...prev.permissionIds, permId],
-    }))
-  }
-
-  // ── Select all permissions for a module ──
-  const selectModule = (module: string, select: boolean) => {
-    const modulePermIds = permissionsByModule[module].map(p => p.id)
-    setFormData(prev => ({
-      ...prev,
-      permissionIds: select
-        ? [...new Set([...prev.permissionIds, ...modulePermIds])]
-        : prev.permissionIds.filter(id => !modulePermIds.includes(id)),
-    }))
-  }
-
   // ── Form helpers ──
   const openAddForm = () => {
     setEditingUser(null)
     setFormData(emptyForm())
     setFormError('')
+    setShowPassword(false)
+    setShowConfirmPassword(false)
+    setRequirePasswordChange(false)
     setShowForm(true)
   }
 
@@ -154,9 +173,11 @@ export default function UsersPage() {
       firstName: user.firstName,
       lastName: user.lastName,
       isActive: user.isActive,
-      permissionIds: user.permissionIds,
     })
     setFormError('')
+    setShowPassword(false)
+    setShowConfirmPassword(false)
+    setRequirePasswordChange(false)
     setShowForm(true)
   }
 
@@ -164,9 +185,12 @@ export default function UsersPage() {
     setShowForm(false)
     setEditingUser(null)
     setFormError('')
+    setShowPassword(false)
+    setShowConfirmPassword(false)
+    setRequirePasswordChange(false)
   }
 
-  // ── Save ──
+  // ── Save user info ──
   const handleSave = async () => {
     setSubmitting(true)
     setFormError('')
@@ -195,10 +219,12 @@ export default function UsersPage() {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         isActive: formData.isActive,
-        permissionIds: formData.permissionIds,
       }
 
-      if (formData.password) body.password = formData.password
+      if (formData.password) {
+        body.password = formData.password
+        body.requirePasswordChange = requirePasswordChange
+      }
 
       if (editingUser) {
         const res = await fetch(`/api/users/${editingUser.id}`, {
@@ -292,9 +318,6 @@ export default function UsersPage() {
         throw new Error(err.error || 'Failed to delete')
       }
       setDeleteTarget(null)
-      // Delete is a soft delete (isActive=0) — remove the row locally so it disappears
-      // immediately instead of refetching (which would bring it back as Inactive).
-      // Undo restores via restoreUser → fetchData.
       setUsers(prev => prev.filter(u => u.id !== deleted.id))
       const fullName = `${deleted.firstName} ${deleted.lastName}`.trim()
       toast.success(`User "${fullName}" deactivated`, {
@@ -305,6 +328,93 @@ export default function UsersPage() {
       toast.error(err?.message || 'Failed to delete user')
     }
   }
+
+  // ── Permissions modal ──
+  const openPermissionsModal = (user: User) => {
+    setPermissionsModalUser(user)
+    setPermissionIds([...user.permissionIds])
+    // Expand all modules by default
+    const allExpanded: Record<string, boolean> = {}
+    for (const module of Object.keys(permissionsByModule)) {
+      allExpanded[module] = true
+    }
+    setExpandedModules(allExpanded)
+  }
+
+  const closePermissionsModal = () => {
+    setPermissionsModalUser(null)
+    setPermissionIds([])
+    setExpandedModules({})
+  }
+
+  const togglePermission = (permId: number) => {
+    setPermissionIds(prev =>
+      prev.includes(permId)
+        ? prev.filter(id => id !== permId)
+        : [...prev, permId]
+    )
+  }
+
+  const toggleModuleExpansion = (module: string) => {
+    setExpandedModules(prev => ({ ...prev, [module]: !prev[module] }))
+  }
+
+  const expandAll = () => {
+    const allExpanded: Record<string, boolean> = {}
+    for (const module of Object.keys(permissionsByModule)) {
+      allExpanded[module] = true
+    }
+    setExpandedModules(allExpanded)
+  }
+
+  const collapseAll = () => {
+    setExpandedModules({})
+  }
+
+  const selectModulePermissions = (module: string, select: boolean) => {
+    const modulePermIds = permissionsByModule[module].map(p => p.id)
+    setPermissionIds(prev =>
+      select
+        ? [...new Set([...prev, ...modulePermIds])]
+        : prev.filter(id => !modulePermIds.includes(id))
+    )
+  }
+
+  const handleSavePermissions = async () => {
+    if (!permissionsModalUser) return
+    setPermissionSubmitting(true)
+    try {
+      const res = await fetch(`/api/users/${permissionsModalUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissionIds }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to update permissions')
+      }
+      // Update local state
+      setUsers(prev => prev.map(u =>
+        u.id === permissionsModalUser.id
+          ? { ...u, permissionIds }
+          : u
+      ))
+      const fullName = `${permissionsModalUser.firstName} ${permissionsModalUser.lastName}`.trim()
+      toast.success(`Permissions updated for "${fullName}"`)
+      closePermissionsModal()
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save permissions')
+    } finally {
+      setPermissionSubmitting(false)
+    }
+  }
+
+  const selectedCountForModule = (module: string): number => {
+    const modulePermIds = permissionsByModule[module].map(p => p.id)
+    return modulePermIds.filter(id => permissionIds.includes(id)).length
+  }
+
+  const totalSelectedCount = permissionIds.length
 
   // ── Render ──
   return (
@@ -356,6 +466,7 @@ export default function UsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">ID</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Last Login</th>
@@ -367,7 +478,7 @@ export default function UsersPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center">
+                    <td colSpan={7} className="py-10 text-center">
                       <UserIcon className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         {users.length === 0
@@ -385,17 +496,15 @@ export default function UsersPage() {
                 ) : (
                   filteredUsers.map(user => (
                     <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                      <td className="py-3 px-4 text-sm text-gray-500 dark:text-gray-400 font-mono">{user.id}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <div className="rounded-full bg-brand-50 dark:bg-brand-950/30 p-2">
                             <UserIcon className="w-4 h-4 text-brand-500" />
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">
-                              {user.firstName} {user.lastName}
-                            </p>
-                            <p className="text-xs text-gray-400">ID: {user.id}</p>
-                          </div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {user.firstName} {user.lastName}
+                          </p>
                         </div>
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">{user.email}</td>
@@ -406,15 +515,25 @@ export default function UsersPage() {
                         <StatusBadge label={user.isActive ? 'Active' : 'Inactive'} color={user.isActive ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400' : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'} />
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {user.permissionIds.length} permission(s)
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400">
+                          <Shield className="w-3 h-3" />
+                          {user.permissionIds.length}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button onClick={() => openEditForm(user)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
-                            title="Edit user"><Edit3 className="w-3.5 h-3.5" /></button>
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
+                            title="Edit user info">
+                            <Edit3 className="w-3.5 h-3.5" />
+                            Edit
+                          </button>
+                          <button onClick={() => openPermissionsModal(user)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"
+                            title="Manage permissions">
+                            <Shield className="w-3.5 h-3.5" />
+                            Permissions
+                          </button>
                           <button onClick={() => setToggleTarget(user)}
                             className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
                             title={user.isActive ? 'Deactivate' : 'Activate'}><CheckCircle className="w-3.5 h-3.5" /></button>
@@ -433,10 +552,10 @@ export default function UsersPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          CREATE / EDIT USER MODAL
+          CREATE / EDIT USER INFO MODAL
          ═══════════════════════════════════════════════════════════════════ */}
-      <Modal isOpen={showForm} onClose={closeForm} className="max-w-3xl p-0" showCloseButton={false}>
-        <ModalHeader title={editingUser ? `Edit User: ${editingUser.firstName} ${editingUser.lastName}` : 'Create User'} onClose={closeForm} />
+      <Modal isOpen={showForm} onClose={closeForm} className="max-w-lg p-0" showCloseButton={false}>
+        <ModalHeader title={editingUser ? 'Edit User' : 'Create User'} subtitle={editingUser ? `${editingUser.firstName} ${editingUser.lastName}` : undefined} onClose={closeForm} />
 
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
           {/* ── Basic Info ── */}
@@ -483,32 +602,98 @@ export default function UsersPage() {
             <p className="text-xs text-gray-400 mb-3">
               {editingUser ? 'Leave blank to keep current password.' : 'Password must be at least 8 characters with uppercase, lowercase, and a number.'}
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              {/* Password input with generate & toggle */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                   {editingUser ? 'New Password' : 'Password'} {!editingUser && <span className="text-red-400">*</span>}
                 </label>
-                <input type="password" value={formData.password}
-                  onChange={e => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  placeholder={editingUser ? 'Leave blank to keep' : 'Min 8 characters'}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input type={showPassword ? 'text' : 'password'} value={formData.password}
+                      onChange={e => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder={editingUser ? 'Leave blank to keep' : 'Min 8 characters'}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-10 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                    <button type="button" onClick={() => setShowPassword(p => !p)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => {
+                    const pw = generatePassword()
+                    setFormData(prev => ({ ...prev, password: pw, confirmPassword: pw }))
+                    setShowPassword(true)
+                    toast.success('Password generated & copied to clipboard')
+                    navigator.clipboard.writeText(pw)
+                  }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shrink-0"
+                    title="Generate secure password">
+                    <RefreshCw className="w-3.5 h-3.5" /> Generate
+                  </button>
+                </div>
               </div>
+
+              {/* Confirm password with toggle */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                   Confirm Password
                 </label>
-                <input type="password" value={formData.confirmPassword}
-                  onChange={e => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                  placeholder="Confirm password"
-                  className={`w-full rounded-lg border bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all ${
-                    formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword
-                      ? 'border-red-300 dark:border-red-700'
-                      : 'border-gray-200 dark:border-gray-700'
-                  }`} />
+                <div className="relative">
+                  <input type={showConfirmPassword ? 'text' : 'password'} value={formData.confirmPassword}
+                    onChange={e => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                    placeholder="Confirm password"
+                    className={`w-full rounded-lg border bg-white dark:bg-gray-800 px-3 py-2 pr-10 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all ${
+                      formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword
+                        ? 'border-red-300 dark:border-red-700'
+                        : 'border-gray-200 dark:border-gray-700'
+                    }`} />
+                  <button type="button" onClick={() => setShowConfirmPassword(p => !p)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
                 {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
                   <p className="text-[11px] text-red-500 mt-1">Passwords do not match</p>
                 )}
               </div>
+
+              {/* Strength indicator */}
+              {formData.password && (() => {
+                const { strength, requirements } = getPasswordStrength(formData.password)
+                const strengthColors = { weak: 'bg-red-500', medium: 'bg-amber-500', strong: 'bg-green-500' }
+                const strengthWidths = { weak: 'w-1/3', medium: 'w-2/3', strong: 'w-full' }
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-300 ${strengthColors[strength]} ${strengthWidths[strength]}`} />
+                      </div>
+                      <span className={`text-xs font-medium capitalize ${
+                        strength === 'weak' ? 'text-red-500' : strength === 'medium' ? 'text-amber-500' : 'text-green-500'
+                      }`}>{strength}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {requirements.map((req, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <Check className={`w-3 h-3 ${req.met ? 'text-green-500' : 'text-gray-300 dark:text-gray-600'}`} />
+                          <span className={`text-[11px] ${req.met ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>{req.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Require password change checkbox */}
+              <label className="flex items-center gap-3 cursor-pointer pt-1">
+                <input type="checkbox" checked={requirePasswordChange}
+                  onChange={e => setRequirePasswordChange(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500 w-4 h-4" />
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">Require password change on first login</span>
+                  <p className="text-xs text-gray-400">User will be forced to set a new password when they first sign in</p>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -523,60 +708,6 @@ export default function UsersPage() {
                 <p className="text-xs text-gray-400">Inactive users cannot sign in to the system</p>
               </div>
             </label>
-          </div>
-
-          {/* ── Permissions ── */}
-          <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Shield className="w-4 h-4 text-gray-400" /> Permissions
-            </h4>
-
-            {Object.keys(permissionsByModule).length === 0 ? (
-              <p className="text-sm text-gray-400 italic py-4 text-center">No permissions defined in the system.</p>
-            ) : (
-              <div className="space-y-4">
-                {Object.entries(permissionsByModule).map(([module, perms]) => {
-                  const allSelected = perms.every(p => formData.permissionIds.includes(p.id))
-                  return (
-                    <div key={module}
-                      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-sm font-medium text-gray-900 dark:text-white capitalize">
-                          {module.replace(/([A-Z])/g, ' $1').trim()}
-                        </span>
-                        <button onClick={() => selectModule(module, !allSelected)}
-                          className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 transition-colors">
-                          {allSelected ? 'Deselect All' : 'Select All'}
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {perms.map(perm => {
-                          const isSelected = formData.permissionIds.includes(perm.id)
-                          return (
-                            <label key={perm.id}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                                isSelected
-                                  ? 'bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-900'
-                                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                              }`}>
-                              <input type="checkbox" checked={isSelected}
-                                onChange={() => togglePermission(perm.id)}
-                                className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500 w-3.5 h-3.5 shrink-0" />
-                              <div className="min-w-0">
-                                <p className="text-xs font-medium text-gray-900 dark:text-white truncate capitalize">
-                                  {perm.action}
-                                </p>
-                                <p className="text-[10px] text-gray-400 truncate">{perm.description}</p>
-                              </div>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
           </div>
 
           {/* Form error */}
@@ -596,6 +727,145 @@ export default function UsersPage() {
             {editingUser ? 'Update User' : 'Create User'}
           </Button>
         </div>
+      </Modal>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          PERMISSIONS MODAL (TREE VIEW)
+         ═══════════════════════════════════════════════════════════════════ */}
+      <Modal isOpen={!!permissionsModalUser} onClose={closePermissionsModal} className="max-w-3xl p-0" showCloseButton={false}>
+        {permissionsModalUser && (
+          <>
+            <ModalHeader
+              title={`Manage Permissions`}
+              subtitle={`${permissionsModalUser.firstName} ${permissionsModalUser.lastName}`}
+              onClose={closePermissionsModal}
+            />
+
+            {/* Toolbar */}
+            <div className="px-6 pt-4 pb-2 flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {totalSelectedCount} of {permissions.length} permissions selected
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={expandAll}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Expand All
+                </button>
+                <button
+                  onClick={collapseAll}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Collapse All
+                </button>
+              </div>
+            </div>
+
+            {/* Tree */}
+            <div className="px-6 py-4 max-h-[55vh] overflow-y-auto">
+              {Object.keys(permissionsByModule).length === 0 ? (
+                <p className="text-sm text-gray-400 italic py-8 text-center">No permissions defined in the system.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(permissionsByModule).map(([module, perms]) => {
+                    const isExpanded = expandedModules[module] ?? false
+                    const selectedCount = selectedCountForModule(module)
+                    const allSelected = selectedCount === perms.length && perms.length > 0
+                    const someSelected = selectedCount > 0 && selectedCount < perms.length
+
+                    return (
+                      <div
+                        key={module}
+                        className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 overflow-hidden"
+                      >
+                        {/* Module header */}
+                        <button
+                          onClick={() => toggleModuleExpansion(module)}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isExpanded
+                              ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                              : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                            }
+                            <span className="text-sm font-medium text-gray-900 dark:text-white capitalize truncate">
+                              {module.replace(/([A-Z])/g, ' $1').trim()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {someSelected && !allSelected && (
+                              <span className="w-2 h-2 rounded-full bg-brand-400" />
+                            )}
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                              allSelected
+                                ? 'bg-brand-100 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                            }`}>
+                              {selectedCount}/{perms.length}
+                            </span>
+                          </div>
+                        </button>
+
+                        {/* Permissions list */}
+                        {isExpanded && (
+                          <div className="px-4 pb-3 pt-1 space-y-1.5 border-t border-gray-100 dark:border-gray-700/50">
+                            {/* Select all toggle */}
+                            <button
+                              onClick={() => selectModulePermissions(module, !allSelected)}
+                              className="w-full text-left px-2 py-1 rounded text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/20 transition-colors"
+                            >
+                              {allSelected ? 'Deselect All' : 'Select All'}
+                            </button>
+
+                            {perms.map(perm => {
+                              const isSelected = permissionIds.includes(perm.id)
+                              return (
+                                <label
+                                  key={perm.id}
+                                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                                    isSelected
+                                      ? 'bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-900'
+                                      : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => togglePermission(perm.id)}
+                                    className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500 w-3.5 h-3.5 shrink-0"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-medium text-gray-900 dark:text-white capitalize">
+                                      {perm.action}
+                                    </p>
+                                    {perm.description && (
+                                      <p className="text-[10px] text-gray-400 truncate">{perm.description}</p>
+                                    )}
+                                  </div>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3 bg-gray-50 dark:bg-gray-900/50 rounded-b-3xl">
+              <Button variant="outline" size="sm" onClick={closePermissionsModal} disabled={permissionSubmitting}>Cancel</Button>
+              <Button size="sm" onClick={handleSavePermissions} disabled={permissionSubmitting}
+                className="flex items-center gap-2">
+                {permissionSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Save Changes
+              </Button>
+            </div>
+          </>
+        )}
       </Modal>
 
       {/* ═══════════════════════════════════════════════════════════════════
