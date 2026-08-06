@@ -5,17 +5,23 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import {
-  Plus, Edit3, Trash2, AlertTriangle, Loader2, Search, Package, DollarSign, Warehouse as WarehouseIcon, Tag, Box,
+  Plus, Edit3, Trash2, AlertTriangle, Loader2, Search, Package, DollarSign, Warehouse as WarehouseIcon, Tag, Box, FolderTree,
 } from 'lucide-react'
 import { usePagination } from '@/hooks/usePagination'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { Pagination } from '@/components/Pagination'
 import { useToast } from '@/components/ui/toast/ToastProvider'
+import ProductTree from '@/components/products/ProductTree'
+import { ProfileSelector } from '@/components/products/ProfileSelector'
 import type { Product, ItemType, Warehouse, TaxCode } from '@/types/erp'
 
+interface ProductTreeNode extends Product {
+  children: Product[]
+  childCount: number
+}
+
 const itemTypes: ItemType[] = ['stock', 'service']
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 const itemTypeConfig: Record<ItemType, { label: string; bg: string; text: string }> = {
   stock: { label: 'Stock Item', bg: 'bg-blue-50 dark:bg-blue-950/50', text: 'text-blue-700 dark:text-blue-400' },
@@ -34,12 +40,16 @@ interface ProductFormData {
   defaultWarehouseId: number | null
   reorderPoint: number
   isActive: boolean
+  parentId: number | null
+  isCategory: boolean
+  profileId: number | null
 }
 
 const emptyForm = (): ProductFormData => ({
   name: '', description: '', itemType: 'stock', unitOfMeasure: 'pcs',
   salesPrice: 0, purchasePrice: 0, vatCodeId: null, purchaseVatCodeId: null,
   defaultWarehouseId: null, reorderPoint: 0, isActive: true,
+  parentId: null, isCategory: false, profileId: null,
 })
 
 
@@ -57,10 +67,13 @@ function ProductsPageContent() {
   const [total, setTotal] = useState(0)
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([])
+  const [categories, setCategories] = useState<Product[]>([])
+  const [tree, setTree] = useState<ProductTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [parentFilter, setParentFilter] = useState<number | null | undefined>(undefined)
   const { page, pageSize, setFilterAndResetPage } = usePagination()
 
   const [showForm, setShowForm] = useState(false)
@@ -79,24 +92,33 @@ function ProductsPageContent() {
       params.set('pageSize', String(pageSize))
       if (searchQuery) params.set('search', searchQuery)
       if (typeFilter !== 'all') params.set('itemType', typeFilter)
+      if (parentFilter !== undefined) params.set('parentId', String(parentFilter))
       const res = await fetch(`/api/products?${params}`)
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const json = await res.json(); if (json.success) { setProducts(json.data); setTotal(json.total) }
     } catch { setError('Failed to load products.') }
     finally { setLoading(false) }
-  }, [page, pageSize, searchQuery, typeFilter])
+  }, [page, pageSize, searchQuery, typeFilter, parentFilter])
 
   const fetchRefs = useCallback(async () => {
     try {
-      const [wRes, tRes] = await Promise.all([
-        fetch('/api/warehouses'), fetch('/api/tax-codes'),
+      const [wRes, tRes, cRes] = await Promise.all([
+        fetch('/api/warehouses'), fetch('/api/tax-codes'), fetch('/api/products/categories'),
       ])
       if (wRes.ok) { const wJson = await wRes.json(); if (wJson.success) setWarehouses(wJson.data) }
       if (tRes.ok) { const tJson = await tRes.json(); if (tJson.success) setTaxCodes(tJson.data) }
+      if (cRes.ok) { const cJson = await cRes.json(); if (cJson.success) setCategories(cJson.data) }
     } catch { /* silent */ }
   }, [])
 
-  useEffect(() => { fetchProducts(); fetchRefs() }, [fetchProducts, fetchRefs])
+  const fetchTree = useCallback(async () => {
+    try {
+      const res = await fetch('/api/products?tree=true')
+      if (res.ok) { const json = await res.json(); if (json.success) setTree(json.data) }
+    } catch { /* silent */ }
+  }, [])
+
+  useEffect(() => { fetchProducts(); fetchRefs(); fetchTree() }, [fetchProducts, fetchRefs, fetchTree])
 
   const openAddForm = () => {
     setEditingProduct(null); setFormData(emptyForm()); setFormTouched(false); setFormError(''); setShowForm(true)
@@ -108,6 +130,7 @@ function ProductsPageContent() {
       salesPrice: Math.round(p.salesPrice / 100), purchasePrice: Math.round(p.purchasePrice / 100),
       vatCodeId: p.vatCodeId, purchaseVatCodeId: p.purchaseVatCodeId,
       defaultWarehouseId: p.defaultWarehouseId, reorderPoint: p.reorderPoint, isActive: p.isActive,
+      parentId: p.parentId, isCategory: p.isCategory, profileId: p.profileId,
     })
     setFormTouched(false); setFormError(''); setShowForm(true)
   }
@@ -132,6 +155,8 @@ function ProductsPageContent() {
         warehouseId: formData.defaultWarehouseId,
         minStock: formData.reorderPoint,
         isActive: formData.isActive,
+        parentId: formData.parentId,
+        isCategory: formData.isCategory,
       }
       if (editingProduct) body.version = editingProduct.version
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -173,6 +198,10 @@ function ProductsPageContent() {
     } catch (err: any) { setError('Failed to delete'); toast.error(err?.message || 'Failed to delete product') }
   }
 
+  const handleTreeSelect = (id: number | null) => {
+    setFilterAndResetPage(setParentFilter, id)
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -183,6 +212,15 @@ function ProductsPageContent() {
         <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors shadow-sm">
           <Plus className="w-4 h-4" /> Add Product
         </button>
+      </div>
+
+      {/* Category tree sidebar */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <FolderTree className="w-4 h-4 text-brand-500" />
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Categories</h2>
+        </div>
+        <ProductTree tree={tree} selectedId={parentFilter ?? null} onSelect={handleTreeSelect} />
       </div>
 
       {/* Summary cards */}
@@ -227,54 +265,69 @@ function ProductsPageContent() {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.map(p => (
-              <div key={p.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="rounded-xl bg-brand-50 dark:bg-brand-950/30 p-2.5 shrink-0">
-                      {p.itemType === 'stock' ? <Box className="w-5 h-5 text-brand-500" /> : <Tag className="w-5 h-5 text-purple-500" />}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{p.code}</p>
-                    </div>
-                  </div>
-                  <StatusBadge label={itemTypeConfig[p.itemType].label} color={`${itemTypeConfig[p.itemType].bg} ${itemTypeConfig[p.itemType].text}`} size="sm" className="shrink-0" />
-                </div>
-
-                <div className="space-y-1.5 mt-3">
-                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                    <DollarSign className="w-3.5 h-3.5 shrink-0" />
-                    <span>Sell: <strong className="text-gray-900 dark:text-white">{formatCurrency(p.salesPrice)}</strong></span>
-                    <span className="text-gray-300 dark:text-gray-600">|</span>
-                    <span>Cost: <strong className="text-gray-900 dark:text-white">{formatCurrency(p.purchasePrice)}</strong></span>
-                  </div>
-                  {p.itemType === 'stock' && (
-                    <>
-                      <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                        <WarehouseIcon className="w-3.5 h-3.5 shrink-0" />
-                        <span>Default WH: {warehouses.find(w => w.id === p.defaultWarehouseId)?.name || 'Not set'}</span>
+            {products.map(p => {
+              const parentCat = p.parentId ? categories.find(c => c.id === p.parentId) : null
+              return (
+                <div key={p.id} className={`rounded-2xl border p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 ${p.isCategory ? 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/10' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900'}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`rounded-xl p-2.5 shrink-0 ${p.isCategory ? 'bg-amber-100 dark:bg-amber-950/50' : 'bg-brand-50 dark:bg-brand-950/30'}`}>
+                        {p.isCategory ? <Box className="w-5 h-5 text-amber-600" /> : p.itemType === 'stock' ? <Box className="w-5 h-5 text-brand-500" /> : <Tag className="w-5 h-5 text-purple-500" />}
                       </div>
-                      {p.reorderPoint > 0 && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                          <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />
-                          <span>Reorder at: {p.reorderPoint} units</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {p.description && <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">{p.description}</p>}
-                </div>
+                      <div className="min-w-0">
+                        <p className={`text-sm truncate ${p.isCategory ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-900 dark:text-white'}`}>{p.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{p.code}</p>
+                      </div>
+                    </div>
+                    {p.isCategory ? (
+                      <StatusBadge label="Category" color="bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400" size="sm" className="shrink-0" />
+                    ) : (
+                      <StatusBadge label={itemTypeConfig[p.itemType].label} color={`${itemTypeConfig[p.itemType].bg} ${itemTypeConfig[p.itemType].text}`} size="sm" className="shrink-0" />
+                    )}
+                  </div>
 
-                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-                  <StatusBadge label={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400' : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'} size="sm" />
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => openEditForm(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                  {parentCat && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                      in <span className="font-medium text-brand-500">{parentCat.name}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5 mt-3">
+                    {!p.isCategory && (
+                      <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                        <DollarSign className="w-3.5 h-3.5 shrink-0" />
+                        <span>Sell: <strong className="text-gray-900 dark:text-white">{formatCurrency(p.salesPrice)}</strong></span>
+                        <span className="text-gray-300 dark:text-gray-600">|</span>
+                        <span>Cost: <strong className="text-gray-900 dark:text-white">{formatCurrency(p.purchasePrice)}</strong></span>
+                      </div>
+                    )}
+                    {p.itemType === 'stock' && !p.isCategory && (
+                      <>
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                          <WarehouseIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span>Default WH: {warehouses.find(w => w.id === p.defaultWarehouseId)?.name || 'Not set'}</span>
+                        </div>
+                        {p.reorderPoint > 0 && (
+                          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                            <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />
+                            <span>Reorder at: {p.reorderPoint} units</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {p.description && <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">{p.description}</p>}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                    <StatusBadge label={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400' : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'} size="sm" />
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEditForm(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
           <Pagination page={page} pageSize={pageSize} total={total} />
         </>
@@ -284,6 +337,33 @@ function ProductsPageContent() {
       <Modal isOpen={showForm} onClose={() => setShowForm(false)} className="max-w-2xl p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{editingProduct ? 'Edit Product' : 'Add Product'}</h3>
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1 custom-scrollbar">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Product Profile</label>
+              <ProfileSelector
+                value={formData.profileId}
+                onChange={(profileId, preset) => {
+                  if (preset) {
+                    setFormData({
+                      ...formData,
+                      profileId,
+                      itemType: (preset.itemType || formData.itemType) as ItemType,
+                      unitOfMeasure: preset.unitOfMeasure || formData.unitOfMeasure,
+                      salesPrice: preset.defaultSalesPrice || formData.salesPrice,
+                      purchasePrice: preset.defaultPurchasePrice || formData.purchasePrice,
+                      defaultWarehouseId: preset.defaultWarehouseId ?? formData.defaultWarehouseId,
+                      vatCodeId: preset.salesVatCodeId ?? formData.vatCodeId,
+                      purchaseVatCodeId: preset.purchaseVatCodeId ?? formData.purchaseVatCodeId,
+                      reorderPoint: preset.reorderPoint ?? formData.reorderPoint,
+                    });
+                  } else {
+                    setFormData({ ...formData, profileId });
+                  }
+                }}
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name <span className="text-red-400">*</span></label>
@@ -303,6 +383,26 @@ function ProductsPageContent() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
             <textarea rows={2} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional description"
               className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Parent Category</label>
+              <select value={formData.parentId ?? ''} onChange={e => setFormData({ ...formData, parentId: e.target.value ? Number(e.target.value) : null })}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all">
+                <option value="">-- None (Top Level) --</option>
+                {categories.filter(c => !editingProduct || c.id !== editingProduct.id).map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end pb-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={formData.isCategory} onChange={e => setFormData({ ...formData, isCategory: e.target.checked })}
+                  className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">This is a category</span>
+              </label>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
