@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "Products", path: "/products", permission: "product.view" },
       { name: "Warehouses", path: "/warehouses", permission: "warehouse.view" },
-      { name: "Inventory Movements", path: "/inventory/movements", permission: "inventory.view" },
+      { name: "Inventory Movements", path: "/inventory/movements", permission: "inventory.adjust" },
       { name: "Stock Adjustments", path: "/inventory/stock-adjustments", permission: "inventory.adjust" },
     ],
   },
@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
     permission: "partner.view",
     subItems: [
       { name: "Business Partners", path: "/business-partners", permission: "partner.view" },
-      { name: "Employees", path: "/settings/employees", permission: "employee.view" },
+      { name: "Employees", path: "/settings/employees", permission: "partner.view" },
     ],
   },
   {
@@ -95,13 +95,13 @@ const navItems: NavItem[] = [
   {
     icon: <PlugInIcon />,
     name: "Settings",
-    permission: "settings.view",
+    permission: "settings.manage",
     subItems: [
-      { name: "Posting Profiles", path: "/settings/posting-profiles", permission: "settings.view" },
-      { name: "Tax Setup", path: "/settings/tax-setup", permission: "settings.view" },
-      { name: "Entry Categories", path: "/settings/entry-categories", permission: "settings.view" },
-      { name: "Document Sequences", path: "/settings/document-sequences", permission: "settings.view" },
-      { name: "System Settings", path: "/settings", permission: "settings.view" },
+      { name: "Posting Profiles", path: "/settings/posting-profiles", permission: "settings.manage" },
+      { name: "Tax Setup", path: "/settings/tax-setup", permission: "settings.manage" },
+      { name: "Entry Categories", path: "/settings/entry-categories", permission: "settings.manage" },
+      { name: "Document Sequences", path: "/settings/document-sequences", permission: "settings.manage" },
+      { name: "System Settings", path: "/settings", permission: "settings.manage" },
       { name: "User Management", path: "/users", permission: "user.view" },
       { name: "My Profile", path: "/profile" },
     ],
