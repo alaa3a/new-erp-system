@@ -961,6 +961,10 @@ function seedInitialData() {
       ['purchaseOrder.close', 'purchaseOrder', 'close', 'Close purchase orders'],
       ['invoice.payment', 'invoice', 'payment', 'Link payments to invoices'],
       ['inventory.adjust', 'inventory', 'adjust', 'Adjust inventory stock'],
+      ['task.view', 'task', 'view', 'View tasks'],
+      ['task.create', 'task', 'create', 'Create tasks'],
+      ['task.update', 'task', 'update', 'Update tasks'],
+      ['task.delete', 'task', 'delete', 'Delete tasks'],
     ];
     const stmt = db.prepare('INSERT OR IGNORE INTO permission (key, module, action, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
     for (const [key, module, action, desc] of perms) {
