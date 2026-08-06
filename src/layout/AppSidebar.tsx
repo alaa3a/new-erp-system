@@ -29,6 +29,12 @@ const navItems: NavItem[] = [
     path: "/",
   },
   {
+    icon: <ListIcon />,
+    name: "Tasks",
+    path: "/tasks",
+    permission: "task.view",
+  },
+  {
     name: "Products",
     icon: <BoxCubeIcon />,
     permission: "product.view",
