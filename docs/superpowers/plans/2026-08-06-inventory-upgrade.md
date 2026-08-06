@@ -253,7 +253,128 @@ Batch 4: Task 41 (Dashboard)
 
 ---
 
-## Summary
+---
+
+## Task 43: Invoice-Inventory Integration
+
+### Files
+- Modify: `src/lib/services/invoiceService.ts` (postInvoice)
+- Modify: `src/app/api/invoices/[id]/post/route.ts`
+
+### Current Issue
+When posting an invoice, stock is moved but:
+- No validation that sufficient stock exists
+- No reservation before posting
+- Stock movement fails silently if insufficient
+
+### Improvements
+1. **Pre-post validation:** Check stock availability for all lines
+2. **Reserve stock** when invoice is approved (optional, depends on workflow)
+3. **Block posting** if insufficient stock with clear error:
+   ```
+   Cannot post: Insufficient stock for Product X (available: 5, required: 10)
+   ```
+4. **Auto-select warehouse** if line doesn't specify one (use product.defaultWarehouseId)
+
+---
+
+## Task 44: Invoice Return / Credit Note from Invoice
+
+### Files
+- Create: `src/app/api/invoices/[id]/return/route.ts`
+- Modify: `src/app/(admin)/invoice/credit-note/page.tsx`
+
+### Feature
+Create credit note directly from an existing invoice:
+- Select invoice → choose lines to return → quantities
+- Auto-create credit note with correct amounts
+- Reverse stock movement (receipt back to warehouse)
+- Link credit note to original invoice
+
+### API: POST /api/invoices/[id]/return
+**Request:**
+```json
+{
+  "lines": [{ "lineId": 1, "quantity": 5 }],
+  "reason": "Damaged goods"
+}
+```
+
+**Logic:**
+1. Validate quantities don't exceed invoiced
+2. Create credit note
+3. Reverse stock (issue → receipt)
+4. Update invoice paid status if fully returned
+
+---
+
+## Task 45: Packing Slip / Delivery Note
+
+### Files
+- Create: `src/app/api/invoices/[id]/packing-slip/route.ts`
+- Create: `src/components/invoices/PackingSlipModal.tsx`
+
+### Feature
+Generate packing slip for posted invoices:
+- Shows products, quantities, warehouse
+- Printable format
+- Marks items as "packed"
+
+### UI
+- Button on posted invoice: "Print Packing Slip"
+- Modal with print-friendly layout
+- Shows: Invoice number, date, products, quantities, warehouse
+
+---
+
+## Task 46: Invoice Cost & Profit Tracking
+
+### Files
+- Modify: `src/types/erp.ts` — add cost tracking to invoice line
+- Modify: `src/lib/services/invoiceService.ts`
+- Create: `src/app/api/reports/profit-by-invoice/route.ts`
+
+### Feature
+Track profit per invoice:
+- At posting time, capture unit cost from `product_warehouse_stock.averageCost`
+- Store `costAmount` on invoice_line
+- Calculate margin: `lineTotal - totalCost`
+- Report: Profit by invoice, by product, by period
+
+### Schema
+```sql
+ALTER TABLE invoice_line ADD COLUMN costAmount INTEGER DEFAULT 0;
+```
+
+---
+
+## Task 47: Purchase Order to Receipt to Invoice Workflow
+
+### Files
+- Modify: `src/app/api/purchase-orders/[id]/receive/route.ts`
+- Modify: `src/app/api/invoices/route.ts` (create from PO)
+
+### Feature
+Complete three-way matching workflow:
+1. **Create PO** → products and quantities ordered
+2. **Receive goods** → stock increases, PO status updates
+3. **Create Invoice from PO** → pre-fill lines from received quantities
+
+### API: POST /api/invoices/from-po
+**Request:**
+```json
+{ "purchaseOrderId": 1 }
+```
+
+**Logic:**
+1. Find PO with status "received" or "partially_received"
+2. Create invoice with lines from PO (received quantities)
+3. Link invoice to PO for three-way matching
+4. Auto-fill prices from PO or product purchase price
+
+---
+
+## Updated Summary
 
 | Task | Feature | Priority | Complexity |
 |------|---------|----------|------------|
@@ -264,5 +385,10 @@ Batch 4: Task 41 (Dashboard)
 | 40 | Cycle count | 🟟 Medium | High |
 | 41 | Inventory dashboard | 🟡 Low | Medium |
 | 42 | Service filter | 🟡 Low | Low |
+| 43 | Invoice-Inventory integration | 🔴 High | Medium |
+| 44 | Credit note from invoice | 🟠 Medium | Medium |
+| 45 | Packing slip | 🟡 Low | Low |
+| 46 | Cost & profit tracking | 🟠 Medium | Medium |
+| 47 | PO → Receipt → Invoice workflow | 🔴 High | High |
 
-**Total: 7 tasks for complete inventory upgrade.**
+**Total: 12 tasks for complete inventory & invoicing upgrade.**
