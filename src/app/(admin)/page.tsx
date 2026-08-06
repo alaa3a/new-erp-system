@@ -1,14 +1,90 @@
 'use client'
-import { formatNumber } from '@/lib/formatters'
+import { formatNumber, formatDate } from '@/lib/formatters'
 import { formatCurrency } from '@/lib/formatters'
 import { StatusBadge } from '@/components/ui'
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  TrendingUp, TrendingDown, DollarSign, FileText, Users,
+  TrendingUp, DollarSign, FileText, Users,
   ShoppingCart, BarChart3, Loader2, AlertTriangle, ChevronRight,
+  ListTodo, CircleCheck, Clock, AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
+
+type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled'
+type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+
+interface Task {
+  id: number
+  title: string
+  description: string
+  status: TaskStatus
+  priority: TaskPriority
+  assignedTo: number | null
+  assignedToName: string | null
+  createdBy: number | null
+  createdByName: string | null
+  dueDate: string | null
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+interface TaskSummary {
+  total: number
+  open: number
+  overdue: number
+  dueToday: number
+  upcoming: Task[]
+}
+
+function isOverdue(dueDate: string | null): boolean {
+  if (!dueDate) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(dueDate)
+  due.setHours(0, 0, 0, 0)
+  return due < today
+}
+
+function isDueToday(dueDate: string | null): boolean {
+  if (!dueDate) return false
+  const today = new Date()
+  const due = new Date(dueDate)
+  return due.getFullYear() === today.getFullYear() &&
+    due.getMonth() === today.getMonth() &&
+    due.getDate() === today.getDate()
+}
+
+function computeTaskSummary(tasks: Task[]): TaskSummary {
+  const openTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled')
+  const overdue = openTasks.filter(t => isOverdue(t.dueDate)).length
+  const dueToday = openTasks.filter(t => isDueToday(t.dueDate)).length
+  const upcoming = openTasks
+    .filter(t => t.dueDate && !isOverdue(t.dueDate))
+    .slice(0, 5)
+  return {
+    total: openTasks.length,
+    open: openTasks.length,
+    overdue,
+    dueToday,
+    upcoming,
+  }
+}
+
+const taskStatusColors: Record<string, string> = {
+  todo: 'bg-gray-400',
+  in_progress: 'bg-blue-500',
+  done: 'bg-green-500',
+  cancelled: 'bg-gray-300',
+}
+
+const taskStatusLabels: Record<string, string> = {
+  todo: 'To Do',
+  in_progress: 'In Progress',
+  done: 'Done',
+  cancelled: 'Cancelled',
+}
 
 
 
@@ -52,10 +128,6 @@ interface DashboardData {
   }[]
 }
 
-const invoiceTypeLabels: Record<string, string> = {
-  sales: 'Sales', purchase: 'Purchase', credit_note: 'Credit', debit_note: 'Debit',
-}
-
 const statusStyles: Record<string, string> = {
   draft: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/50 dark:text-yellow-400',
   posted: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400',
@@ -72,6 +144,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [tasksLoading, setTasksLoading] = useState(true)
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true)
@@ -88,6 +162,29 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => { fetchDashboard() }, [fetchDashboard])
+
+  const fetchTasks = useCallback(async () => {
+    setTasksLoading(true)
+    try {
+      const userRes = await fetch('/api/auth/me')
+      if (!userRes.ok) return
+      const userData = await userRes.json()
+      if (!userData.success || !userData.user?.id) return
+
+      const tasksRes = await fetch(`/api/tasks?assignedTo=${userData.user.id}`)
+      if (!tasksRes.ok) return
+      const tasksJson = await tasksRes.json()
+      if (tasksJson.success && Array.isArray(tasksJson.data)) {
+        setTasks(tasksJson.data)
+      }
+    } catch {
+      // ignore task fetch errors - widget shows empty state
+    } finally {
+      setTasksLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchTasks() }, [fetchTasks])
 
   if (loading) {
     return (
@@ -328,6 +425,71 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* My Tasks Widget */}
+      {!tasksLoading && computeTaskSummary(tasks).total > 0 && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <ListTodo className="w-5 h-5 text-brand-500" />
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">My Tasks</h2>
+            </div>
+            <Link href="/tasks" className="text-xs font-medium text-brand-500 hover:text-brand-600 flex items-center gap-1">
+              View All <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
+            <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+              <div className="flex items-center gap-2">
+                <CircleCheck className="w-4 h-4 text-gray-400" />
+                <p className="text-xs text-gray-500 dark:text-gray-400">Open</p>
+              </div>
+              <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{computeTaskSummary(tasks).open}</p>
+            </div>
+            <div className="rounded-xl bg-red-50 dark:bg-red-950/20 p-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500" />
+                <p className="text-xs text-red-600 dark:text-red-400">Overdue</p>
+              </div>
+              <p className="mt-1 text-xl font-semibold text-red-600 dark:text-red-400">{computeTaskSummary(tasks).overdue}</p>
+            </div>
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 p-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-500" />
+                <p className="text-xs text-amber-600 dark:text-amber-400">Due Today</p>
+              </div>
+              <p className="mt-1 text-xl font-semibold text-amber-600 dark:text-amber-400">{computeTaskSummary(tasks).dueToday}</p>
+            </div>
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-950/20 p-3">
+              <div className="flex items-center gap-2">
+                <ListTodo className="w-4 h-4 text-blue-500" />
+                <p className="text-xs text-blue-600 dark:text-blue-400">Total</p>
+              </div>
+              <p className="mt-1 text-xl font-semibold text-blue-600 dark:text-blue-400">{tasks.length}</p>
+            </div>
+          </div>
+
+          {computeTaskSummary(tasks).upcoming.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-2">Upcoming</p>
+              <div className="space-y-2">
+                {computeTaskSummary(tasks).upcoming.map((task) => (
+                  <div key={task.id} className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <div className={`w-2 h-2 rounded-full ${taskStatusColors[task.status]}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{task.title}</p>
+                    </div>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+                      {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
