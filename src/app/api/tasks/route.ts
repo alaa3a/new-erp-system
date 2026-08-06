@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
 import { taskRepository } from '@/lib/repositories/taskRepository';
-import { auditLogRepository } from '@/lib/repositories/userRepository';
+import { auditLogRepository, notificationRepository } from '@/lib/repositories/userRepository';
 import { handleApiError, ValidationError } from '@/lib/utils/errors';
 import { ensureInitialized } from '@/lib/db';
 import { validate, createTaskSchema } from '@/lib/validators';
@@ -39,6 +39,16 @@ export async function POST(request: NextRequest) {
       dueDate: body.dueDate || null,
     });
     auditLogRepository.log({ userId: auth.userId, action: 'create', entityType: 'task', entityId: id });
+    if (body.assignedTo) {
+      notificationRepository.create({
+        userId: body.assignedTo,
+        type: 'info',
+        title: 'New Task Assigned',
+        message: `You have been assigned a task: "${body.title}"`,
+        entityType: 'task',
+        entityId: id,
+      });
+    }
     return NextResponse.json({ success: true, data: taskRepository.findById(id) }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

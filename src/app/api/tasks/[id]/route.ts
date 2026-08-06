@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
 import { taskRepository } from '@/lib/repositories/taskRepository';
-import { auditLogRepository } from '@/lib/repositories/userRepository';
+import { auditLogRepository, notificationRepository, userRepository } from '@/lib/repositories/userRepository';
 import { handleApiError, NotFoundError } from '@/lib/utils/errors';
 import { ensureInitialized } from '@/lib/db';
 import { validate, updateTaskSchema } from '@/lib/validators';
@@ -38,6 +38,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ...(body.dueDate !== undefined && { dueDate: body.dueDate }),
     });
     auditLogRepository.log({ userId: auth.userId, action: 'update', entityType: 'task', entityId: taskId });
+    if (body.status === 'done' && existing.status !== 'done' && existing.createdBy) {
+      const completedByUser = userRepository.findById(auth.userId);
+      const doneByName = completedByUser ? `${completedByUser.firstName} ${completedByUser.lastName}`.trim() : 'Someone';
+      notificationRepository.create({
+        userId: existing.createdBy,
+        type: 'success',
+        title: 'Task Completed',
+        message: `Task "${existing.title}" has been completed by ${doneByName}`,
+        entityType: 'task',
+        entityId: taskId,
+      });
+    }
     return NextResponse.json({ success: true, data: taskRepository.findById(taskId) });
   } catch (error) {
     return handleApiError(error);
