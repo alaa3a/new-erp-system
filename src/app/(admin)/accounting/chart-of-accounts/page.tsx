@@ -23,7 +23,6 @@ import {
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { useToast } from '@/components/ui/toast/ToastProvider'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Account, AccountType, AccountPartnerFilter, CostCenter, AccountUsage } from '@/types/erp'
 
 const accountTypes: AccountType[] = ['asset', 'liability', 'equity', 'revenue', 'expense']
@@ -54,17 +53,15 @@ const costCenterBadges: { bg: string; text: string; dot: string }[] = [
 const getCostCenterBadge = (id: number) => costCenterBadges[id % costCenterBadges.length]
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const accountTypeLabel: Record<AccountType, string> = {
+  asset: 'Asset (1)', liability: 'Liability (2)', equity: 'Equity (3)', revenue: 'Revenue (4)', expense: 'Expense (5)',
+}
 
 function UsageCell({ usage }: { usage?: AccountUsage }) {
   const [hover, setHover] = useState(false)
   const hasPosting = (usage?.postingProfiles?.length || 0) > 0
   const hasTax = (usage?.taxCodes?.length || 0) > 0
-  const hasEntries = (usage?.entryLines || 0) > 0
-  const hasInvoices = (usage?.invoiceLines || 0) > 0
-  const hasPOs = (usage?.purchaseOrderLines || 0) > 0
-  if (!hasPosting && !hasTax && !hasEntries && !hasInvoices && !hasPOs) {
-    return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-  }
+  if (!hasPosting && !hasTax) return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
   return (
     <div
       className="relative inline-block"
@@ -78,18 +75,9 @@ function UsageCell({ usage }: { usage?: AccountUsage }) {
         {hasTax && (
           <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400">Tax</span>
         )}
-        {hasEntries && (
-          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">Entries · {usage!.entryLines}</span>
-        )}
-        {hasInvoices && (
-          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-400">Invoices · {usage!.invoiceLines}</span>
-        )}
-        {hasPOs && (
-          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-400">POs · {usage!.purchaseOrderLines}</span>
-        )}
       </div>
       {hover && (
-        <div className="absolute z-30 left-0 top-full mt-1 w-72 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 shadow-xl text-xs">
+        <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 shadow-xl text-xs">
           {hasPosting && (
             <div className="mb-2">
               <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Posting Profiles</p>
@@ -99,19 +87,11 @@ function UsageCell({ usage }: { usage?: AccountUsage }) {
             </div>
           )}
           {hasTax && (
-            <div className="mb-2">
+            <div>
               <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Tax Codes</p>
               {usage!.taxCodes.map((name, i) => (
                 <p key={i} className="text-gray-500 dark:text-gray-400">{name}</p>
               ))}
-            </div>
-          )}
-          {(hasEntries || hasInvoices || hasPOs) && (
-            <div>
-              <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Transaction Lines</p>
-              {hasEntries && <p className="text-gray-500 dark:text-gray-400">Journal entries: {usage!.entryLines}</p>}
-              {hasInvoices && <p className="text-gray-500 dark:text-gray-400">Invoices: {usage!.invoiceLines}</p>}
-              {hasPOs && <p className="text-gray-500 dark:text-gray-400">Purchase orders: {usage!.purchaseOrderLines}</p>}
             </div>
           )}
         </div>
@@ -148,7 +128,11 @@ const emptyForm = (accounts: Account[], parentId: number | null, type: AccountTy
 
 export default function ChartOfAccountsPage() {
   const toast = useToast()
-  const queryClient = useQueryClient()
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([])
+  const [usageMap, setUsageMap] = useState<Record<string, AccountUsage>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<AccountType | 'All'>('All')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
@@ -156,10 +140,12 @@ export default function ChartOfAccountsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [formData, setFormData] = useState<AccountFormData>(emptyForm([], null, 'asset'))
+  const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [toggleTarget, setToggleTarget] = useState<Account | null>(null)
+  const [toggling, setToggling] = useState(false)
   const [linkCcTarget, setLinkCcTarget] = useState<Account | null>(null)
   // Multi-step link wizard: 'pick' = choose Cost/Partners/Emp, 'config' = the detail step
   const [linkStep, setLinkStep] = useState<'pick' | 'config'>('pick')
@@ -181,32 +167,39 @@ export default function ChartOfAccountsPage() {
   const [parentOpen, setParentOpen] = useState(false)
   const [toggleError, setToggleError] = useState('')
 
-  const { data: accountsData, isLoading: loading, error, refetch: refetchAccounts } = useQuery({
-    queryKey: ['accounts'],
-    queryFn: async (): Promise<{ success: boolean; data: Account[]; usage?: Record<string, AccountUsage>; error?: string }> => {
+  const fetchAccounts = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
       const res = await fetch('/api/accounts')
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const json = await res.json()
       if (!json.success) throw new Error(json.error)
-      return json
-    },
-  })
+      setAccounts(json.data)
+      setUsageMap(json.usage || {})
+    } catch (err) {
+      setError('Failed to load accounts. Make sure the server is running.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const accounts = accountsData?.data ?? []
-  const usageMap = accountsData?.usage ?? {}
-
-  const { data: costCentersData } = useQuery({
-    queryKey: ['cost-centers'],
-    queryFn: async (): Promise<{ success: boolean; data: CostCenter[]; error?: string }> => {
+  const fetchCostCenters = useCallback(async () => {
+    try {
       const res = await fetch('/api/cost-centers')
-      if (!res.ok) throw new Error(`Error ${res.status}`)
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error)
-      return json
-    },
-  })
+      if (res.ok) {
+        const json = await res.json()
+        if (json.success) setCostCenters(json.data)
+      }
+    } catch {
+      // silent
+    }
+  }, [])
 
-  const costCenters = costCentersData?.data ?? []
+  useEffect(() => {
+    fetchAccounts()
+    fetchCostCenters()
+  }, [fetchAccounts, fetchCostCenters])
 
   // Filtered & searched accounts (keep ancestors so tree is navigable)
   const filteredAccounts = useMemo(() => {
@@ -277,8 +270,14 @@ export default function ChartOfAccountsPage() {
   }
 
   // --- Save ---
-  const saveMutation = useMutation({
-    mutationFn: async () => {
+  const handleSave = async () => {
+    if (!formData.code.trim() || !formData.name.trim()) {
+      setFormError('Code and name are required')
+      return
+    }
+    setSaving(true)
+    setFormError('')
+    try {
       const url = editingAccount ? `/api/accounts/${editingAccount.id}` : '/api/accounts'
       const method = editingAccount ? 'PUT' : 'POST'
       const body: any = { code: formData.code, name: formData.name, type: formData.type, parentId: formData.parentId }
@@ -290,28 +289,18 @@ export default function ChartOfAccountsPage() {
         const err = await res.json()
         throw new Error(err.error || 'Failed to save account')
       }
-      return res.json()
-    },
-    onSuccess: (json) => {
+      const json = await res.json()
       if (json.warning) {
         toast.info(json.warning)
       }
       setShowForm(false)
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      fetchAccounts()
       toast.success(editingAccount ? `Account "${formData.name}" updated` : `Account "${formData.name}" created`)
-    },
-    onError: (err: Error) => {
+    } catch (err: any) {
       setFormError(err.message)
-    },
-  })
-
-  const handleSave = () => {
-    if (!formData.code.trim() || !formData.name.trim()) {
-      setFormError('Code and name are required')
-      return
+    } finally {
+      setSaving(false)
     }
-    setFormError('')
-    saveMutation.mutate()
   }
 
   // --- Toggle Active (with confirmation) ---
@@ -320,35 +309,27 @@ export default function ChartOfAccountsPage() {
     setToggleError('')
   }
 
-  const toggleMutation = useMutation({
-    mutationFn: async () => {
-      if (!toggleTarget) return
+  const handleToggleConfirm = async () => {
+    if (!toggleTarget) return
+    setToggling(true)
+    setToggleError('')
+    try {
       const res = await fetch(`/api/accounts/${toggleTarget.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'toggleActive', isActive: !toggleTarget.isActive, cascade: true }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-    },
-    onSuccess: () => {
-      const targetName = toggleTarget?.name ?? ''
-      const wasActive = toggleTarget?.isActive ?? false
+      const errData = !res.ok ? await res.json().catch(() => ({})) : null
+      if (errData) throw new Error(errData.error || `HTTP ${res.status}`)
       setToggleTarget(null)
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      toast.success(wasActive ? `Account "${targetName}" deactivated` : `Account "${targetName}" activated`)
-    },
-    onError: (err: Error) => {
+      fetchAccounts()
+      toast.success(toggleTarget.isActive ? `Account "${toggleTarget.name}" deactivated` : `Account "${toggleTarget.name}" activated`)
+    } catch (err: any) {
+      // Show the error inside the modal so it is never hidden behind it.
       setToggleError(err.message || 'Failed to toggle account status')
-    },
-  })
-
-  const handleToggleConfirm = () => {
-    if (!toggleTarget) return
-    setToggleError('')
-    toggleMutation.mutate()
+    } finally {
+      setToggling(false)
+    }
   }
 
   // --- Delete (with undo) ---
@@ -390,41 +371,33 @@ export default function ChartOfAccountsPage() {
           toast.error(`Account restored, but re-linking failed: ${linkErr?.message || 'unknown error'}`)
         }
       }
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      fetchAccounts()
       toast.success(`Account "${account.name}" restored`)
     } catch (err: any) {
       toast.error(err.message || 'Failed to restore account')
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      fetchAccounts()
     }
   }
 
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!deleteTarget) return
-      const res = await fetch(`/api/accounts/${deleteTarget.id}`, { method: 'DELETE' })
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteError('')
+    const deleted = deleteTarget
+    try {
+      const res = await fetch(`/api/accounts/${deleted.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Delete failed')
       }
-    },
-    onSuccess: () => {
-      const deleted = deleteTarget
       setDeleteTarget(null)
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      toast.success(`Account "${deleted?.name}" deleted`, {
-        action: { label: 'Undo', onClick: () => restoreAccount(deleted!) },
+      fetchAccounts()
+      toast.success(`Account "${deleted.name}" deleted`, {
+        action: { label: 'Undo', onClick: () => restoreAccount(deleted) },
         duration: 8000,
       })
-    },
-    onError: (err: Error) => {
+    } catch (err: any) {
       setDeleteError(err.message)
-    },
-  })
-
-  const handleDelete = () => {
-    if (!deleteTarget) return
-    setDeleteError('')
-    deleteMutation.mutate()
+    }
   }
 
   // --- Link Account (Cost Center | Partner | Employee) ---
@@ -461,36 +434,46 @@ export default function ChartOfAccountsPage() {
     return count
   }
 
-  const linkMutation = useMutation({
-    mutationFn: async ({ cascade }: { cascade: boolean }) => {
-      if (!linkCcTarget) return
-      // Partner and employee links are dimension-level: the account links to a type
-      // filter (customers/vendors/both) or to employees in general — the concrete
-      // partner/employee is chosen on each entry line, so no linkId is sent.
-      const linkType = linkTab === 'cost_center'
-        ? (selectedCostCenterId ? 'cost_center' : null)
-        : linkTab === 'employee'
-          ? (linkEmployeeRemove ? null : 'employee')
-          : (partnerLinkFilter === 'none' ? null : 'partner')
-      const linkId = linkTab === 'cost_center' ? selectedCostCenterId : null
-      const linkPartnerFilter = linkTab === 'partner' && partnerLinkFilter !== 'none' ? partnerLinkFilter : null
+  const doLink = async (cascade: boolean) => {
+    if (!linkCcTarget) return
+    setLinkCcError('')
+    // Partner and employee links are dimension-level: the account links to a type
+    // filter (customers/vendors/both) or to employees in general — the concrete
+    // partner/employee is chosen on each entry line, so no linkId is sent.
+    const linkType = linkTab === 'cost_center'
+      ? (selectedCostCenterId ? 'cost_center' : null)
+      : linkTab === 'employee'
+        ? (linkEmployeeRemove ? null : 'employee')
+        : (partnerLinkFilter === 'none' ? null : 'partner')
+    const linkId = linkTab === 'cost_center' ? selectedCostCenterId : null
+    const linkPartnerFilter = linkTab === 'partner' && partnerLinkFilter !== 'none' ? partnerLinkFilter : null
 
+    try {
       const res = await fetch(`/api/accounts/${linkCcTarget.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'link', linkType, linkId, linkPartnerFilter, cascade }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-    },
-    onSuccess: () => {
+      const errData = !res.ok ? await res.json().catch(() => ({})) : null
+      if (errData) throw new Error(errData.error || `HTTP ${res.status}`)
       setLinkCcConfirmOpen(false)
       setLinkCcOpen(false)
-      const targetName = linkCcTarget?.name ?? ''
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      queryClient.invalidateQueries({ queryKey: ['cost-centers'] })
+      setLinkCcTarget(null)
+      setLinkCcError('')
+      // Don't show loading spinner — just refresh data silently
+      const [accRes, ccRes] = await Promise.all([
+        fetch('/api/accounts'),
+        fetch('/api/cost-centers'),
+      ])
+      if (accRes.ok) {
+        const accJson = await accRes.json()
+        if (accJson.success) setAccounts(accJson.data)
+      }
+      if (ccRes.ok) {
+        const ccJson = await ccRes.json()
+        if (ccJson.success) setCostCenters(ccJson.data)
+      }
+      const targetName = linkCcTarget.name
       if (linkTab === 'partner') {
         if (partnerLinkFilter === 'none') {
           toast.success(`Partner link removed from "${targetName}"`)
@@ -510,18 +493,13 @@ export default function ChartOfAccountsPage() {
           ? `Cost center "${ccName}" linked to "${targetName}"`
           : `Cost center link removed from "${targetName}"`)
       }
-      setLinkCcTarget(null)
-      setLinkCcError('')
-    },
-    onError: (err: Error) => {
+      if (!accRes.ok || !ccRes.ok) {
+        setError('Link saved, but failed to refresh data')
+      }
+    } catch (err: any) {
+      // Show the error inside the modal so it is never hidden behind it.
       setLinkCcError(err.message || 'Failed to link')
-    },
-  })
-
-  const doLink = (cascade: boolean) => {
-    if (!linkCcTarget) return
-    setLinkCcError('')
-    linkMutation.mutate({ cascade })
+    }
   }
 
   // If the account has sub-accounts, ask for the scope in a confirmation
@@ -688,10 +666,6 @@ export default function ChartOfAccountsPage() {
             )
           })()}
         </td>
-        {/* Used In */}
-        <td className="py-2 px-3">
-          <UsageCell usage={usageMap[account.code]} />
-        </td>
         {/* Type */}
         <td className="py-2 px-3">
           <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${typeConfig[account.type].bg} ${typeConfig[account.type].text}`}>
@@ -708,6 +682,10 @@ export default function ChartOfAccountsPage() {
           }`}>
             {account.isActive ? 'Active' : 'Inactive'}
           </span>
+        </td>
+        {/* Used In */}
+        <td className="py-2 px-3">
+          <UsageCell usage={usageMap[account.code]} />
         </td>
         {/* Actions */}
         <td className="py-2 px-3 text-right">
@@ -800,8 +778,8 @@ export default function ChartOfAccountsPage() {
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-16 px-6">
             <AlertTriangle className="w-10 h-10 text-red-400 mb-3" />
-            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error?.message || 'Failed to load accounts. Make sure the server is running.'}</p>
-            <button onClick={() => refetchAccounts()} className="mt-3 text-sm font-medium text-brand-500 hover:text-brand-600 transition-colors">
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
+            <button onClick={fetchAccounts} className="mt-3 text-sm font-medium text-brand-500 hover:text-brand-600 transition-colors">
               Try again
             </button>
           </div>
@@ -832,9 +810,9 @@ export default function ChartOfAccountsPage() {
                 <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</th>
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Linked To</th>
-                  <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Used In</th>
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
                   <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Status</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Used In</th>
                   <th className="text-right py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -1042,9 +1020,9 @@ export default function ChartOfAccountsPage() {
           {/* Buttons */}
           <div className="flex items-center justify-end gap-3 pt-2">
             <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending || !formData.code.trim() || !formData.name.trim()}>
-              {saveMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              {saveMutation.isPending ? 'Saving...' : editingAccount ? 'Update Account' : 'Create Account'}
+            <Button size="sm" onClick={handleSave} disabled={saving || !formData.code.trim() || !formData.name.trim()}>
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {saving ? 'Saving...' : editingAccount ? 'Update Account' : 'Create Account'}
             </Button>
           </div>
         </div>
@@ -1505,15 +1483,15 @@ export default function ChartOfAccountsPage() {
             )}
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setToggleTarget(null)} disabled={toggleMutation.isPending}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={() => setToggleTarget(null)} disabled={toggling}>Cancel</Button>
               <Button
                 size="sm"
                 onClick={handleToggleConfirm}
-                disabled={toggleMutation.isPending}
+                disabled={toggling}
                 className={toggleTarget.isActive ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-500 hover:bg-green-600'}
               >
-                {toggleMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                {toggleMutation.isPending ? 'Updating...' : toggleTarget.isActive ? 'Yes, Deactivate' : 'Yes, Activate'}
+                {toggling && <Loader2 className="w-4 h-4 animate-spin" />}
+                {toggling ? 'Updating...' : toggleTarget.isActive ? 'Yes, Deactivate' : 'Yes, Activate'}
               </Button>
             </div>
           </div>
