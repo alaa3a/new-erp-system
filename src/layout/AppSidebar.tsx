@@ -125,15 +125,8 @@ const AppSidebar: React.FC = () => {
         const res = await fetch("/api/auth/me");
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.data?.permissionIds) {
-            const perms = await fetch("/api/permissions");
-            if (perms.ok) {
-              const permData = await perms.json();
-              if (permData.success) {
-                const permMap = new Map(permData.data.map((p: any) => [p.id, p.key]));
-                setUserPermissions(data.data.permissionIds.map((id: number) => permMap.get(id)).filter(Boolean));
-              }
-            }
+          if (data.success && data.user?.permissions) {
+            setUserPermissions(data.user.permissions);
           }
         }
       } catch {
