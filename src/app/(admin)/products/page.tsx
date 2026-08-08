@@ -97,6 +97,7 @@ function ProductsPageContent() {
       if (searchQuery) params.set('search', searchQuery)
       if (typeFilter !== 'all') params.set('itemType', typeFilter)
       if (parentFilter !== undefined) params.set('parentId', String(parentFilter))
+      params.set('isCategory', '0')
       const res = await fetch(`/api/products?${params}`)
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const json = await res.json(); if (json.success) { setProducts(json.data); setTotal(json.total) }
