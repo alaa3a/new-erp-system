@@ -286,25 +286,19 @@ function ProductsPageContent() {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.map(p => {
-              const parentCat = p.parentId ? categories.find(c => c.id === p.parentId) : null
-              return (
-                <div key={p.id} className={`rounded-2xl border p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 ${p.isCategory ? 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/10' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900'}`}>
+            {products.map(p => (
+                <div key={p.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`rounded-xl p-2.5 shrink-0 ${p.isCategory ? 'bg-amber-100 dark:bg-amber-950/50' : 'bg-brand-50 dark:bg-brand-950/30'}`}>
-                        {p.isCategory ? <Box className="w-5 h-5 text-amber-600" /> : p.itemType === 'stock' ? <Box className="w-5 h-5 text-brand-500" /> : <Tag className="w-5 h-5 text-purple-500" />}
+                      <div className="rounded-xl p-2.5 shrink-0 bg-brand-50 dark:bg-brand-950/30">
+                        {p.itemType === 'stock' ? <Box className="w-5 h-5 text-brand-500" /> : <Tag className="w-5 h-5 text-purple-500" />}
                       </div>
                       <div className="min-w-0">
-                        <p className={`text-sm truncate ${p.isCategory ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-900 dark:text-white'}`}>{p.name}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{p.code}</p>
                       </div>
                     </div>
-                    {p.isCategory ? (
-                      <StatusBadge label="Category" color="bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400" size="sm" className="shrink-0" />
-                    ) : (
-                      <StatusBadge label={itemTypeConfig[p.itemType].label} color={`${itemTypeConfig[p.itemType].bg} ${itemTypeConfig[p.itemType].text}`} size="sm" className="shrink-0" />
-                    )}
+                    <StatusBadge label={itemTypeConfig[p.itemType].label} color={`${itemTypeConfig[p.itemType].bg} ${itemTypeConfig[p.itemType].text}`} size="sm" className="shrink-0" />
                   </div>
 
                   <div className="space-y-1.5 mt-3">
