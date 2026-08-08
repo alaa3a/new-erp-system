@@ -16,24 +16,28 @@ export const productProfileRepository = {
   create: (data: any) => {
     const now = new Date().toISOString();
     return db.prepare(
-      'INSERT INTO product_profile (code, name, description, itemType, unitOfMeasure, salesVatCodeId, purchaseVatCodeId, defaultWarehouseId, defaultSalesPrice, defaultPurchasePrice, reorderPoint, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
+      'INSERT INTO product_profile (code, name, description, itemType, unitOfMeasure, salesVatCodeId, purchaseVatCodeId, defaultWarehouseId, defaultSalesPrice, defaultPurchasePrice, reorderPoint, salesAccountId, purchaseAccountId, inventoryAccountId, cogsAccountId, defaultCostCenterId, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
     ).run(
       data.code, data.name, data.description || '', data.itemType || 'stock',
       data.unitOfMeasure || 'pcs', data.salesVatCodeId || null, data.purchaseVatCodeId || null,
       data.defaultWarehouseId || null, data.defaultSalesPrice || 0, data.defaultPurchasePrice || 0,
-      data.reorderPoint || 0, now, now
+      data.reorderPoint || 0, data.salesAccountId || null, data.purchaseAccountId || null,
+      data.inventoryAccountId || null, data.cogsAccountId || null, data.defaultCostCenterId || null,
+      now, now
     ).lastInsertRowid as number;
   },
 
   update: (id: number, data: any) => {
     const now = new Date().toISOString();
     return db.prepare(
-      'UPDATE product_profile SET code=?, name=?, description=?, itemType=?, unitOfMeasure=?, salesVatCodeId=?, purchaseVatCodeId=?, defaultWarehouseId=?, defaultSalesPrice=?, defaultPurchasePrice=?, reorderPoint=?, updatedAt=? WHERE id=?'
+      'UPDATE product_profile SET code=?, name=?, description=?, itemType=?, unitOfMeasure=?, salesVatCodeId=?, purchaseVatCodeId=?, defaultWarehouseId=?, defaultSalesPrice=?, defaultPurchasePrice=?, reorderPoint=?, salesAccountId=?, purchaseAccountId=?, inventoryAccountId=?, cogsAccountId=?, defaultCostCenterId=?, updatedAt=? WHERE id=?'
     ).run(
       data.code, data.name, data.description || '', data.itemType || 'stock',
       data.unitOfMeasure || 'pcs', data.salesVatCodeId || null, data.purchaseVatCodeId || null,
       data.defaultWarehouseId || null, data.defaultSalesPrice || 0, data.defaultPurchasePrice || 0,
-      data.reorderPoint || 0, now, id
+      data.reorderPoint || 0, data.salesAccountId || null, data.purchaseAccountId || null,
+      data.inventoryAccountId || null, data.cogsAccountId || null, data.defaultCostCenterId || null,
+      now, id
     ).changes > 0;
   },
 
@@ -54,6 +58,11 @@ export const productProfileRepository = {
       defaultSalesPrice: profile.defaultSalesPrice,
       defaultPurchasePrice: profile.defaultPurchasePrice,
       reorderPoint: profile.reorderPoint,
+      salesAccountId: profile.salesAccountId,
+      purchaseAccountId: profile.purchaseAccountId,
+      inventoryAccountId: profile.inventoryAccountId,
+      cogsAccountId: profile.cogsAccountId,
+      defaultCostCenterId: profile.defaultCostCenterId,
     };
   },
 };

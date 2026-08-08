@@ -19,6 +19,11 @@ export const createProductSchema = z.object({
   parentId: z.number().int().positive().nullable().optional().default(null),
   isCategory: z.boolean().optional().default(false),
   profileId: z.number().int().positive().nullable().optional().default(null),
+  salesAccountId: z.number().int().positive().nullable().optional().default(null),
+  purchaseAccountId: z.number().int().positive().nullable().optional().default(null),
+  inventoryAccountId: z.number().int().positive().nullable().optional().default(null),
+  cogsAccountId: z.number().int().positive().nullable().optional().default(null),
+  defaultCostCenterId: z.number().int().positive().nullable().optional().default(null),
 })
 
 export const updateProductSchema = createProductSchema.partial()

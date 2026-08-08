@@ -357,6 +357,11 @@ function initDb() {
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
+      salesAccountId INTEGER REFERENCES account(id),
+      purchaseAccountId INTEGER REFERENCES account(id),
+      inventoryAccountId INTEGER REFERENCES account(id),
+      cogsAccountId INTEGER REFERENCES account(id),
+      defaultCostCenterId INTEGER REFERENCES cost_center(id),
       FOREIGN KEY(defaultWarehouseId) REFERENCES warehouse(id),
       FOREIGN KEY(parentId) REFERENCES product(id) ON DELETE SET NULL
     );
@@ -387,6 +392,7 @@ function initDb() {
       productId INTEGER NOT NULL,
       warehouseId INTEGER NOT NULL,
       quantity INTEGER NOT NULL DEFAULT 0,
+      reservedQuantity INTEGER NOT NULL DEFAULT 0,
       averageCost INTEGER NOT NULL DEFAULT 0,
       lastUpdated TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
@@ -524,6 +530,7 @@ function initDb() {
       vatAmount INTEGER NOT NULL DEFAULT 0,
       lineTotal INTEGER NOT NULL DEFAULT 0,
       lineType TEXT NOT NULL DEFAULT 'stock',
+      costAmount INTEGER NOT NULL DEFAULT 0,
       warehouseId INTEGER,
       costCenterId INTEGER,
       accountCode TEXT,
@@ -776,7 +783,36 @@ function initDb() {
       FOREIGN KEY (assignedTo) REFERENCES users(id),
       FOREIGN KEY (createdBy) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS inventory_count (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      countNumber TEXT NOT NULL UNIQUE,
+      warehouseId INTEGER NOT NULL,
+      countedBy INTEGER NOT NULL,
+      status TEXT DEFAULT 'draft', -- draft, submitted, adjusted
+      notes TEXT,
+      countedAt TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (warehouseId) REFERENCES warehouse(id),
+      FOREIGN KEY (countedBy) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_count_line (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      countId INTEGER NOT NULL,
+      productId INTEGER NOT NULL,
+      systemQuantity INTEGER NOT NULL,
+      countedQuantity INTEGER NOT NULL,
+      variance INTEGER NOT NULL,
+      FOREIGN KEY (countId) REFERENCES inventory_count(id),
+      FOREIGN KEY (productId) REFERENCES product(id)
+    );
   `);
+  // Migration: stock reservation (Task 38) — quantity on hand vs committed to orders
+  try { db.exec('ALTER TABLE product_warehouse_stock ADD COLUMN reservedQuantity INTEGER NOT NULL DEFAULT 0'); } catch { /* column may already exist */ }
+  // Migration: invoice cost tracking (Task 46) — unit cost captured at posting time
+  try { db.exec('ALTER TABLE invoice_line ADD COLUMN costAmount INTEGER NOT NULL DEFAULT 0'); } catch { /* column may already exist */ }
   // Migration: add purchaseOrderId to invoice if missing from existing DB
   try { db.exec('ALTER TABLE invoice ADD COLUMN purchaseOrderId INTEGER REFERENCES purchase_order(id)'); } catch { /* column may already exist */ }
   // Migration: product profiles (template for product creation)

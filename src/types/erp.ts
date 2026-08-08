@@ -206,6 +206,11 @@ export interface ProductProfile {
   defaultSalesPrice: number;
   defaultPurchasePrice: number;
   reorderPoint: number;
+  salesAccountId: number | null;
+  purchaseAccountId: number | null;
+  inventoryAccountId: number | null;
+  cogsAccountId: number | null;
+  defaultCostCenterId: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -215,7 +220,12 @@ export interface ProductWarehouseStock {
   id: number;
   productId: number;
   warehouseId: number;
+  /** Physical stock on hand. */
   quantity: number;
+  /** Quantity committed to orders but not yet shipped. */
+  reservedQuantity: number;
+  /** Quantity available for new orders = quantity - reservedQuantity. */
+  available: number;
   averageCost: number;
   lastUpdated: string;
   version: number;
@@ -354,6 +364,9 @@ export interface PurchaseOrderLine {
   receivedQuantity: number;
   invoicedQuantity: number;
   discountPercent: number;
+  vatCodeId: number | null;
+  vatRate: number;
+  vatAmount: number;
   lineTotal: number;
   lineType: 'stock' | 'service';
   warehouseId: number | null;
@@ -447,6 +460,8 @@ export interface InvoiceLine {
   costCenterId: number | null;
   accountCode: string;
   lineType: 'stock' | 'service';
+  /** Unit cost captured from the warehouse average cost at posting time (Task 46). */
+  costAmount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -524,6 +539,41 @@ export interface InventoryMovement {
   postedBy: string;
   postedAt: string;
   createdAt: string;
+}
+
+export type InventoryCountStatus = 'draft' | 'submitted' | 'adjusted';
+
+export interface InventoryCount {
+  id: number;
+  countNumber: string;
+  warehouseId: number;
+  countedBy: number;
+  status: InventoryCountStatus;
+  notes: string;
+  countedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryCountLine {
+  id: number;
+  countId: number;
+  productId: number;
+  productName?: string;
+  productCode?: string;
+  systemQuantity: number;
+  countedQuantity: number;
+  variance: number;
+}
+
+export interface ReorderAlert {
+  productId: number;
+  productCode: string;
+  productName: string;
+  warehouseId: number;
+  warehouseName: string;
+  quantity: number;
+  reorderPoint: number;
 }
 
 export interface AuditLog {
