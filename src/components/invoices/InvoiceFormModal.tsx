@@ -21,6 +21,10 @@ interface LineFormData {
   vatRate: number
   warehouseId: number | null
   lineType: 'stock' | 'service'
+  costCenterId: number | null
+  salesAccountId: number | null
+  inventoryAccountId: number | null
+  cogsAccountId: number | null
 }
 
 interface InvoiceFormData {

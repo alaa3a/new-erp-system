@@ -90,6 +90,10 @@ interface Product {
   purchaseVatCodeId: number | null
   isActive: boolean | undefined
   defaultWarehouseId: number | null
+  salesAccountId: number | null
+  inventoryAccountId: number | null
+  cogsAccountId: number | null
+  defaultCostCenterId: number | null
 }
 
 interface TaxCode {
@@ -159,6 +163,10 @@ const newLine = (): LineFormData => ({
   vatRate: 0,
   warehouseId: null,
   lineType: 'stock',
+  costCenterId: null,
+  salesAccountId: null,
+  inventoryAccountId: null,
+  cogsAccountId: null,
 })
 
 export default function PurchasePage() {
