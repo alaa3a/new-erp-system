@@ -226,15 +226,6 @@ function ProductsPageContent() {
         </button>
       </div>
 
-      {/* Category tree sidebar */}
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <FolderTree className="w-4 h-4 text-brand-500" />
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Categories</h2>
-        </div>
-        <ProductTree tree={tree} selectedId={parentFilter ?? null} onSelect={handleTreeSelect} />
-      </div>
-
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -315,12 +306,6 @@ function ProductsPageContent() {
                       <StatusBadge label={itemTypeConfig[p.itemType].label} color={`${itemTypeConfig[p.itemType].bg} ${itemTypeConfig[p.itemType].text}`} size="sm" className="shrink-0" />
                     )}
                   </div>
-
-                  {parentCat && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                      in <span className="font-medium text-brand-500">{parentCat.name}</span>
-                    </div>
-                  )}
 
                   <div className="space-y-1.5 mt-3">
                     {!p.isCategory && (
