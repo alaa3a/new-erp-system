@@ -335,15 +335,14 @@ function ProductsPageContent() {
 
                   <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
                     <StatusBadge label={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400' : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'} size="sm" />
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEditForm(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                     <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => openEditForm(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                      <button type="button" onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
+                 </div>
+               ))}
+           </div>
           <Pagination page={page} pageSize={pageSize} total={total} />
         </>
       )}
