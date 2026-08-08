@@ -5,8 +5,8 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import {
-  Plus, Edit3, Trash2, AlertTriangle, Loader2, Search, Package, DollarSign, Warehouse as WarehouseIcon, Tag, Box, FolderTree,
-} from 'lucide-react'
+   Plus, Edit3, Trash2, AlertTriangle, Loader2, Search, Package, DollarSign, Warehouse as WarehouseIcon, Tag, Box, FolderTree, X,
+ } from 'lucide-react'
 import { usePagination } from '@/hooks/usePagination'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
@@ -84,6 +84,9 @@ function ProductsPageContent() {
   const [formError, setFormError] = useState('')
   const [formTouched, setFormTouched] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+  const [showCategoryForm, setShowCategoryForm] = useState(false)
+  const [categoryForm, setCategoryForm] = useState({ code: '', name: '', description: '', isActive: true })
+  const [savingCategory, setSavingCategory] = useState(false)
 
   const fetchProducts = useCallback(async () => {
     setLoading(true); setError('')
@@ -134,6 +137,31 @@ function ProductsPageContent() {
 
   const openAddForm = () => {
     setEditingProduct(null); setFormData(emptyForm()); setFormTouched(false); setFormError(''); setShowForm(true)
+  }
+
+  const handleSaveCategory = async () => {
+    if (!categoryForm.code.trim() || !categoryForm.name.trim()) {
+      toast.error('Code and name are required')
+      return
+    }
+    setSavingCategory(true)
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(categoryForm),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create category')
+      toast.success('Category created')
+      setShowCategoryForm(false)
+      setCategoryForm({ code: '', name: '', description: '', isActive: true })
+      fetchProducts()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create category')
+    } finally {
+      setSavingCategory(false)
+    }
   }
   const openEditForm = (p: Product) => {
     setEditingProduct(p)
@@ -221,9 +249,14 @@ function ProductsPageContent() {
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Products</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage stock items and services with pricing and warehouse assignment.</p>
         </div>
-        <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors shadow-sm">
-          <Plus className="w-4 h-4" /> Add Product
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowCategoryForm(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <FolderTree className="w-4 h-4" /> Add Category
+          </button>
+          <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors shadow-sm">
+            <Plus className="w-4 h-4" /> Add Product
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -346,6 +379,42 @@ function ProductsPageContent() {
           <Pagination page={page} pageSize={pageSize} total={total} />
         </>
       )}
+
+      {/* Category Form Modal */}
+      <Modal isOpen={showCategoryForm} onClose={() => setShowCategoryForm(false)} className="max-w-md p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Add Category</h3>
+          <button onClick={() => setShowCategoryForm(false)} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Code *</label>
+            <input value={categoryForm.code} onChange={e => setCategoryForm({ ...categoryForm, code: e.target.value })} placeholder="01"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
+            <input value={categoryForm.name} onChange={e => setCategoryForm({ ...categoryForm, name: e.target.value })} placeholder="Electronics"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+            <textarea value={categoryForm.description} onChange={e => setCategoryForm({ ...categoryForm, description: e.target.value })} placeholder="Optional description" rows={2}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" checked={categoryForm.isActive} onChange={e => setCategoryForm({ ...categoryForm, isActive: e.target.checked })} className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500" />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Active</span>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 mt-6">
+          <Button variant="outline" onClick={() => setShowCategoryForm(false)} disabled={savingCategory}>Cancel</Button>
+          <Button onClick={handleSaveCategory} disabled={savingCategory} className="flex items-center gap-2">
+            {savingCategory ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Create Category
+          </Button>
+        </div>
+      </Modal>
 
       {/* Add/Edit Modal */}
       <Modal isOpen={showForm} onClose={() => setShowForm(false)} className="max-w-2xl p-6">
