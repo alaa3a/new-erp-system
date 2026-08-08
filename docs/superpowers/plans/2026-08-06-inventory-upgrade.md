@@ -242,6 +242,47 @@ CREATE TABLE inventory_count_line (
 
 ---
 
+## Task 48: Product Categories (Parent-Child)
+
+### Database
+- Add `parentId` column to product table (self-referencing FK)
+- Add `isCategory` boolean flag
+- Seed 3 sample categories: Electronics, Clothing, Services
+
+### API
+- Accept `parentId` and `isCategory` in product CRUD
+- New endpoint: `GET /api/products/categories`
+- Query params: `?parentId=`, `?category=true`, `?tree=true`
+- Prevent circular references
+
+### UI
+- Tree sidebar on products page for filtering by category
+- Parent dropdown + "is category" checkbox in product form
+- Breadcrumb display: Electronics > Laptops
+- Category cards with child count badges
+
+---
+
+## Task 49: Product Profiles
+
+### Database
+- New table: `product_profile` with template fields
+- Add `profileId` FK to product table
+- Seed 4 profiles: Standard, Tax Exempt, Service, Import
+
+### API
+- `GET/POST /api/products/profiles`
+- `GET/PUT/DELETE /api/products/profiles/[id]`
+- Profile CRUD with preset values
+
+### UI
+- ProfileSelector component in product form
+- Auto-fill fields on profile selection (tax, warehouse, type, prices)
+- Manage Profiles page at `/settings/product-profiles`
+- Sidebar menu item under Settings
+
+---
+
 ## Execution Order
 
 ```
@@ -376,19 +417,43 @@ Complete three-way matching workflow:
 
 ## Updated Summary
 
-| Task | Feature | Priority | Complexity |
-|------|---------|----------|------------|
-| 36 | Inter-warehouse transfer | 🔴 High | Medium |
-| 37 | Delete validation | 🔴 High | Low |
-| 38 | Stock reservation | 🔴 High | Medium |
-| 39 | Reorder point alerts | 🟠 Medium | Low |
-| 40 | Cycle count | 🟟 Medium | High |
-| 41 | Inventory dashboard | 🟡 Low | Medium |
-| 42 | Service filter | 🟡 Low | Low |
-| 43 | Invoice-Inventory integration | 🔴 High | Medium |
-| 44 | Credit note from invoice | 🟠 Medium | Medium |
-| 45 | Packing slip | 🟡 Low | Low |
-| 46 | Cost & profit tracking | 🟠 Medium | Medium |
-| 47 | PO → Receipt → Invoice workflow | 🔴 High | High |
+| Task | Feature | Priority | Complexity | Status |
+|------|---------|----------|------------|--------|
+| 36 | Inter-warehouse transfer | 🔴 High | Medium | ✅ Done |
+| 37 | Delete validation | 🔴 High | Low | ✅ Done |
+| 38 | Stock reservation | 🔴 High | Medium | ✅ Done |
+| 39 | Reorder point alerts | 🟠 Medium | Low | ✅ Done |
+| 40 | Cycle count | 🟟 Medium | High | ✅ Done |
+| 41 | Inventory dashboard | 🟡 Low | Medium | ✅ Done |
+| 42 | Service filter | 🟡 Low | Low | ✅ Done |
+| 43 | Invoice-Inventory integration | 🔴 High | Medium | ✅ Done |
+| 44 | Credit note from invoice | 🟠 Medium | Medium | ✅ Done |
+| 45 | Packing slip | 🟡 Low | Low | ✅ Done |
+| 46 | Cost & profit tracking | 🟠 Medium | Medium | ✅ Done |
+| 47 | PO → Receipt → Invoice workflow | 🔴 High | High | ✅ Done |
 
 **Total: 12 tasks for complete inventory & invoicing upgrade.**
+
+---
+
+## Implementation Notes (completed 2026-08-08)
+
+- **Task 36** — `POST /api/inventory/transfers` + Transfer Stock modal on Movements page.
+  `transferStock` uses the AVAILABLE quantity (on hand − reserved) and rejects same-warehouse transfers.
+- **Task 37** — DELETE guards on products (stock across warehouses, invoice/PO references) and warehouses (stocked product count).
+- **Task 38** — `reservedQuantity` column + `available` field on `/api/inventory/stock`. `reserveStock` /
+  `releaseStock` / `consumeReservation` in the service; posting consumes any held reservation.
+- **Task 39** — `GET /api/inventory/reorder-check`; low-stock notifications fire after adjustments, transfers,
+  PO receipts, invoice posting and cycle counts. Low-stock badges on Products page + dashboard widget.
+- **Task 40** — `inventory_count` + `inventory_count_line` tables, repository, list/create/edit/submit API,
+  `/inventory/counts` page with count sheet + variance review + submit-adjust flow.
+- **Task 41** — `/inventory/dashboard` page (stock health, valuation by warehouse, low stock, top movers,
+  recent movements) + sidebar menu.
+- **Task 42** — stock & movement queries filter `itemType = 'stock'`; stock-adjustments rejects service items.
+- **Task 43** — pre-post availability validation (`Cannot post: Insufficient stock for X (available: a, required: r)`)
+  + auto-select warehouse from product default. Wired into posting, so posting a sales invoice now blocks on short stock.
+- **Task 44** — `POST /api/invoices/[id]/return` creates a linked credit/debit note, reverses stock, tracks
+  returned quantities per line; Return modal on the sales page.
+- **Task 45** — `GET /api/invoices/[id]/packing-slip` + `PackingSlipModal` (printable) on posted invoices.
+- **Task 46** — `costAmount` captured on invoice lines at posting; `GET /api/reports/profit-by-invoice` with margin.
+- **Task 47** — `POST /api/invoices/from-po` creates a purchase invoice from received PO quantities (three-way matching).
