@@ -310,7 +310,7 @@ function ProductsPageContent() {
                         <span>Cost: <strong className="text-gray-900 dark:text-white">{formatCurrency(p.purchasePrice)}</strong></span>
                       </div>
                     )}
-                    {p.itemType === 'stock' && !p.isCategory && (
+                    {p.itemType === 'stock' && (
                       <>
                         <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                           <WarehouseIcon className="w-3.5 h-3.5 shrink-0" />
