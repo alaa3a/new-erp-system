@@ -257,7 +257,16 @@ function ProductsPageContent() {
           ))}
         </div>
         <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
-        <select value={parentFilter ?? ''} onChange={e => setFilterAndResetPage(setParentFilter, e.target.value ? Number(e.target.value) : undefined)}
+        <select value={parentFilter ?? ''} onChange={e => {
+          const raw = e.target.value;
+          const value: number | null = raw ? Number(raw) : null;
+          if (page > 1) {
+            const params = new URLSearchParams(window.location.search);
+            params.set('page', '1');
+            window.history.replaceState(null, '', `?${params.toString()}`);
+          }
+          setParentFilter(value);
+        }}
           className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20">
           <option value="">All Categories</option>
           {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
