@@ -247,20 +247,23 @@ function ProductsPageContent() {
         ))}
       </div>
 
-      <div className="flex items-center gap-0 flex-wrap rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2.5 divide-x divide-gray-200 dark:divide-gray-700">
-        {(['all', ...itemTypes] as const).map(t => (
-          <button key={t} onClick={() => setFilterAndResetPage(setTypeFilter, t)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === t ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30 dark:text-brand-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
-            {t === 'all' ? 'All' : itemTypeConfig[t].label}
-          </button>
-        ))}
-         <select value={parentFilter ?? ''} onChange={e => setFilterAndResetPage(setParentFilter, e.target.value ? Number(e.target.value) : undefined)}
-           className="rounded-lg border-0 bg-transparent px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-0 mx-2"
-           style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}>
-           <option value="">All Categories</option>
-           {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-         </select>
-         <div className="flex-1 min-w-0" />
+      <div className="flex items-center gap-2 flex-wrap rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2.5">
+        <div className="flex items-center gap-1">
+          {(['all', ...itemTypes] as const).map(t => (
+            <button key={t} onClick={() => setFilterAndResetPage(setTypeFilter, t)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === t ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30 dark:text-brand-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              {t === 'all' ? 'All' : itemTypeConfig[t].label}
+            </button>
+          ))}
+        </div>
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+        <select value={parentFilter ?? ''} onChange={e => setFilterAndResetPage(setParentFilter, e.target.value ? Number(e.target.value) : undefined)}
+          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20">
+          <option value="">All Categories</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+        <div className="flex-1 min-w-0" />
          <ClearFiltersButton
           filters={{ type: typeFilter !== 'all', search: searchQuery !== '' }}
           onClear={() => {
