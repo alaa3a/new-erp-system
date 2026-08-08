@@ -318,64 +318,39 @@ function ProductsPageContent() {
         <EmptyState icon={<Package className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />} title="No products yet" action={<button onClick={openAddForm} className="mt-2 text-sm font-medium text-brand-500"><Plus className="w-4 h-4 inline" /> Add your first product</button>} />
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.map(p => (
-                <div key={p.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="rounded-xl p-2.5 shrink-0 bg-brand-50 dark:bg-brand-950/30">
-                        {p.itemType === 'stock' ? <Box className="w-5 h-5 text-brand-500" /> : <Tag className="w-5 h-5 text-purple-500" />}
+           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+                <tr className="text-left">
+                  <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Code</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Name</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Type</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Sell Price</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Cost Price</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Status</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {products.map(p => (
+                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{p.code}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{p.name}</td>
+                    <td className="px-4 py-3"><StatusBadge label={itemTypeConfig[p.itemType].label} color={`${itemTypeConfig[p.itemType].bg} ${itemTypeConfig[p.itemType].text}`} size="sm" /></td>
+                    <td className="px-4 py-3 text-gray-900 dark:text-white">{formatCurrency(p.salesPrice)}</td>
+                    <td className="px-4 py-3 text-gray-900 dark:text-white">{formatCurrency(p.purchasePrice)}</td>
+                    <td className="px-4 py-3"><StatusBadge label={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'} size="sm" /></td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => openEditForm(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{p.code}</p>
-                      </div>
-                    </div>
-                    <StatusBadge label={itemTypeConfig[p.itemType].label} color={`${itemTypeConfig[p.itemType].bg} ${itemTypeConfig[p.itemType].text}`} size="sm" className="shrink-0" />
-                  </div>
-
-                  <div className="space-y-1.5 mt-3">
-                    {!p.isCategory && (
-                      <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                        <DollarSign className="w-3.5 h-3.5 shrink-0" />
-                        <span>Sell: <strong className="text-gray-900 dark:text-white">{formatCurrency(p.salesPrice)}</strong></span>
-                        <span className="text-gray-300 dark:text-gray-600">|</span>
-                        <span>Cost: <strong className="text-gray-900 dark:text-white">{formatCurrency(p.purchasePrice)}</strong></span>
-                      </div>
-                    )}
-                    {p.itemType === 'stock' && (
-                      <>
-                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                          <WarehouseIcon className="w-3.5 h-3.5 shrink-0" />
-                          <span>Default WH: {warehouses.find(w => w.id === p.defaultWarehouseId)?.name || 'Not set'}</span>
-                        </div>
-                        {p.reorderPoint > 0 && (
-                          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                            <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />
-                            <span>Reorder at: {p.reorderPoint} units</span>
-                          </div>
-                        )}
-                        {lowStockIds.has(p.id) && (
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
-                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                            <span className="px-1.5 py-0.5 rounded-md bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900">Low stock</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {p.description && <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">{p.description}</p>}
-                  </div>
-
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-                    <StatusBadge label={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400' : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'} size="sm" />
-                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => openEditForm(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                      <button type="button" onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
-                  </div>
-                 </div>
-               ))}
-           </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <Pagination page={page} pageSize={pageSize} total={total} />
         </>
       )}
