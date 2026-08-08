@@ -71,6 +71,7 @@ function ProductsPageContent() {
   const [tree, setTree] = useState<ProductTreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [lowStockIds, setLowStockIds] = useState<Set<number>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [parentFilter, setParentFilter] = useState<number | null | undefined>(undefined)
@@ -118,7 +119,18 @@ function ProductsPageContent() {
     } catch { /* silent */ }
   }, [])
 
-  useEffect(() => { fetchProducts(); fetchRefs(); fetchTree() }, [fetchProducts, fetchRefs, fetchTree])
+  // Task 39 — low stock badge: fetch products below their reorder point.
+  const fetchLowStock = useCallback(async () => {
+    try {
+      const res = await fetch('/api/inventory/reorder-check')
+      if (res.ok) {
+        const json = await res.json()
+        if (json.success) setLowStockIds(new Set((json.data || []).map((a: any) => a.productId)))
+      }
+    } catch { /* silent */ }
+  }, [])
+
+  useEffect(() => { fetchProducts(); fetchRefs(); fetchTree(); fetchLowStock() }, [fetchProducts, fetchRefs, fetchTree, fetchLowStock])
 
   const openAddForm = () => {
     setEditingProduct(null); setFormData(emptyForm()); setFormTouched(false); setFormError(''); setShowForm(true)
@@ -236,12 +248,16 @@ function ProductsPageContent() {
       </div>
 
       <div className="flex items-center gap-2 flex-wrap rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2.5">
-        {(['all', ...itemTypes] as const).map(t => (
-          <button key={t} onClick={() => setFilterAndResetPage(setTypeFilter, t)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === t ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30 dark:text-brand-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
-            {t === 'all' ? 'All' : itemTypeConfig[t].label}
-          </button>
+        {(['all', ...itemTypes] as const).map((t, i) => (
+          <div key={t} className="flex items-center gap-2">
+            {i > 0 && <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />}
+            <button onClick={() => setFilterAndResetPage(setTypeFilter, t)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === t ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30 dark:text-brand-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              {t === 'all' ? 'All' : itemTypeConfig[t].label}
+            </button>
+          </div>
         ))}
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1" />
         <div className="flex-1 min-w-0" />
         <ClearFiltersButton
           filters={{ type: typeFilter !== 'all', search: searchQuery !== '' }}
@@ -311,6 +327,12 @@ function ProductsPageContent() {
                           <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                             <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />
                             <span>Reorder at: {p.reorderPoint} units</span>
+                          </div>
+                        )}
+                        {lowStockIds.has(p.id) && (
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            <span className="px-1.5 py-0.5 rounded-md bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900">Low stock</span>
                           </div>
                         )}
                       </>
