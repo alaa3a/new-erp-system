@@ -1,8 +1,15 @@
 import { db } from '../db';
 
 export const productCategoryRepository = {
-  findAll: () => {
-    return db.prepare('SELECT * FROM product_category WHERE deletedAt IS NULL ORDER BY code').all() as any[];
+  findAll: (search?: string) => {
+    let sql = 'SELECT * FROM product_category WHERE deletedAt IS NULL';
+    const params: any[] = [];
+    if (search) {
+      sql += ' AND (name LIKE ? OR code LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    sql += ' ORDER BY code';
+    return db.prepare(sql).all(...params) as any[];
   },
 
   findById: (id: number) => {

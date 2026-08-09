@@ -40,8 +40,7 @@ interface ProductFormData {
   defaultWarehouseId: number | null
   reorderPoint: number
   isActive: boolean
-  parentId: number | null
-  isCategory: boolean
+  categoryId: number | null
   profileId: number | null
 }
 
@@ -49,7 +48,7 @@ const emptyForm = (): ProductFormData => ({
   name: '', description: '', itemType: 'stock', unitOfMeasure: 'pcs',
   salesPrice: 0, purchasePrice: 0, vatCodeId: null, purchaseVatCodeId: null,
   defaultWarehouseId: null, reorderPoint: 0, isActive: true,
-  parentId: null, isCategory: false, profileId: null,
+  categoryId: null, profileId: null,
 })
 
 
@@ -96,8 +95,7 @@ function ProductsPageContent() {
       params.set('pageSize', String(pageSize))
       if (searchQuery) params.set('search', searchQuery)
       if (typeFilter !== 'all') params.set('itemType', typeFilter)
-      if (parentFilter !== undefined) params.set('parentId', String(parentFilter))
-      params.set('isCategory', '0')
+      if (parentFilter !== undefined) params.set('categoryId', String(parentFilter))
       const res = await fetch(`/api/products?${params}`)
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const json = await res.json(); if (json.success) { setProducts(json.data); setTotal(json.total) }
@@ -108,7 +106,7 @@ function ProductsPageContent() {
   const fetchRefs = useCallback(async () => {
     try {
       const [wRes, tRes, cRes] = await Promise.all([
-        fetch('/api/warehouses'), fetch('/api/tax-codes'), fetch('/api/products/categories'),
+        fetch('/api/warehouses'), fetch('/api/tax-codes'), fetch('/api/product-categories'),
       ])
       if (wRes.ok) { const wJson = await wRes.json(); if (wJson.success) setWarehouses(wJson.data) }
       if (tRes.ok) { const tJson = await tRes.json(); if (tJson.success) setTaxCodes(tJson.data) }
@@ -147,7 +145,7 @@ function ProductsPageContent() {
     }
     setSavingCategory(true)
     try {
-      const res = await fetch('/api/categories', {
+      const res = await fetch('/api/product-categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(categoryForm),
@@ -171,7 +169,7 @@ function ProductsPageContent() {
       salesPrice: Math.round(p.salesPrice / 100), purchasePrice: Math.round(p.purchasePrice / 100),
       vatCodeId: p.vatCodeId, purchaseVatCodeId: p.purchaseVatCodeId,
       defaultWarehouseId: p.defaultWarehouseId, reorderPoint: p.reorderPoint, isActive: p.isActive,
-      parentId: p.parentId, isCategory: p.isCategory, profileId: p.profileId,
+      categoryId: p.categoryId, profileId: p.profileId,
     })
     setFormTouched(false); setFormError(''); setShowForm(true)
   }
@@ -196,8 +194,7 @@ function ProductsPageContent() {
         warehouseId: formData.defaultWarehouseId,
         minStock: formData.reorderPoint,
         isActive: formData.isActive,
-        parentId: formData.parentId,
-        isCategory: formData.isCategory,
+        categoryId: formData.categoryId,
       }
       if (editingProduct) body.version = editingProduct.version
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -446,21 +443,14 @@ function ProductsPageContent() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Parent Category</label>
-              <select value={formData.parentId ?? ''} onChange={e => setFormData({ ...formData, parentId: e.target.value ? Number(e.target.value) : null })}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Category</label>
+              <select value={formData.categoryId ?? ''} onChange={e => setFormData({ ...formData, categoryId: e.target.value ? Number(e.target.value) : null })}
                 className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all">
-                <option value="">-- None (Top Level) --</option>
-                {categories.filter(c => !editingProduct || c.id !== editingProduct.id).map(c => (
+                <option value="">-- None --</option>
+                {categories.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-            </div>
-            <div className="flex items-end pb-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={formData.isCategory} onChange={e => setFormData({ ...formData, isCategory: e.target.checked })}
-                  className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500" />
-                <span className="text-sm text-gray-700 dark:text-gray-300">This is a category</span>
-              </label>
             </div>
           </div>
 

@@ -25,8 +25,7 @@ describe('productRepository', () => {
         defaultWarehouseId: null,
         reorderPoint: 0,
         isActive: true,
-        parentId: null,
-        isCategory: false,
+        categoryId: null,
         profileId: null,
       });
       expect(id).toBeGreaterThan(0);
@@ -52,8 +51,7 @@ describe('productRepository', () => {
         defaultWarehouseId: null,
         reorderPoint: 0,
         isActive: true,
-        parentId: null,
-        isCategory: false,
+        categoryId: null,
         profileId: null,
       });
       expect(id).toBeGreaterThan(0);

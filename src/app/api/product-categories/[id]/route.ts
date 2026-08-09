@@ -45,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       description: body.description,
       isActive: body.isActive,
       parentId: body.parentId,
-    }, existing.version)
+    })
 
     if (!success) {
       return NextResponse.json({ success: false, error: 'Category has been modified by another user. Please refresh.' }, { status: 409 })
@@ -82,7 +82,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ success: false, error: 'Cannot delete a category with products. Reassign them first.' }, { status: 400 })
     }
 
-    const success = productCategoryRepository.softDelete(categoryId, existing.version)
+    const success = productCategoryRepository.softDelete(categoryId)
     if (!success) {
       return NextResponse.json({ success: false, error: 'Category has been modified by another user. Please refresh.' }, { status: 409 })
     }
