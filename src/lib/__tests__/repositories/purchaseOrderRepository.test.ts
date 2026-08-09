@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { setupTestDatabase, teardownTestDatabase, seedTestData } from '../test-helper';
 import { purchaseOrderRepository } from '../../repositories/purchaseOrderRepository';
-import { db } from '../../db';
 
 describe('purchaseOrderRepository', () => {
   let data: any;
@@ -18,7 +17,6 @@ describe('purchaseOrderRepository', () => {
   // Track created PO IDs for cross-test references
   let poId1: number;
   let poId2: number;
-  let poId3: number;
   let poId4: number;
   let poId5: number;
 
@@ -145,7 +143,7 @@ describe('purchaseOrderRepository', () => {
 
   describe('findAll', () => {
     beforeAll(() => {
-      poId3 = purchaseOrderRepository.create({
+      purchaseOrderRepository.create({
         partnerName: 'Vendor A', orderDate: '2026-07-01',
         expectedDate: '2026-07-15', createdBy: 'test',
       });

@@ -135,6 +135,12 @@ export function generateProductCode(): string {
   return 'PR-' + String(next).padStart(5, '0');
 }
 
+export function generateCategoryCode(): string {
+  const row = db.prepare("SELECT MAX(CAST(SUBSTR(code, 5) AS INTEGER)) AS maxNum FROM product_category WHERE code LIKE 'CAT-%'").get() as any;
+  const next = (row?.maxNum || 0) + 1;
+  return 'CAT-' + String(next).padStart(4, '0');
+}
+
 export function generateEmployeeCode(): string {
   const row = db.prepare("SELECT MAX(CAST(SUBSTR(code, 4) AS INTEGER)) AS maxNum FROM employee WHERE code LIKE 'EM-%'").get() as any;
   const next = (row?.maxNum || 0) + 1;

@@ -1,7 +1,6 @@
 import { db } from '../db';
 import { PurchaseOrder, PurchaseOrderLine, GoodsReceipt, GoodsReceiptLine } from '@/types/erp';
 import { generatePONumber, generateReceiptNumber } from '../utils/idGenerator';
-import { NotFoundError, BusinessRuleError } from '../utils/errors';
 
 function mapPO(row: any): PurchaseOrder {
   return {
@@ -74,15 +73,17 @@ export const purchaseOrderRepository = {
     return result.lastInsertRowid as number;
   },
 
-  addLine(line: Omit<PurchaseOrderLine, 'id' | 'createdAt' | 'updatedAt'>): number {
+  // VAT fields are optional at line creation (defaults 0 / null in the schema).
+  addLine(line: Omit<PurchaseOrderLine, 'id' | 'createdAt' | 'updatedAt' | 'vatCodeId' | 'vatRate' | 'vatAmount'> & { vatCodeId?: number | null; vatRate?: number; vatAmount?: number }): number {
     const now = new Date().toISOString();
     const result = db.prepare(`
-      INSERT INTO purchase_order_line (poId, lineNumber, productId, description, quantity, unitPrice, receivedQuantity, invoicedQuantity, discountPercent, lineTotal, lineType, warehouseId, costCenterId, accountCode, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO purchase_order_line (poId, lineNumber, productId, description, quantity, unitPrice, receivedQuantity, invoicedQuantity, discountPercent, vatCodeId, vatRate, vatAmount, lineTotal, lineType, warehouseId, costCenterId, accountCode, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       line.poId, line.lineNumber, line.productId, line.description, line.quantity,
       line.unitPrice, line.receivedQuantity || 0, line.invoicedQuantity || 0,
-      line.discountPercent || 0, line.lineTotal, line.lineType || 'stock', line.warehouseId,
+      line.discountPercent || 0, line.vatCodeId ?? null, line.vatRate || 0, line.vatAmount || 0,
+      line.lineTotal, line.lineType || 'stock', line.warehouseId,
       line.costCenterId, line.accountCode, now, now,
     );
     return result.lastInsertRowid as number;

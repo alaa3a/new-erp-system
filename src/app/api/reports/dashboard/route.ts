@@ -5,7 +5,6 @@ import { handleApiError } from '@/lib/utils/errors';
 export async function GET(request: NextRequest) {
   try {
     await ensureInitialized();
-    const { searchParams } = new URL(request.url);
 
     // Revenue from posted entries (revenue accounts credit - debit)
     const revenueRow = db.prepare(`

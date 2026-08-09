@@ -171,6 +171,18 @@ export interface Warehouse {
   version: number;
 }
 
+export interface ProductCategory {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  parentId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
 export interface Product {
   id: number;
   code: string;
@@ -185,8 +197,7 @@ export interface Product {
   defaultWarehouseId: number | null;
   reorderPoint: number;
   isActive: boolean;
-  parentId: number | null;
-  isCategory: boolean;
+  categoryId: number | null;
   profileId: number | null;
   createdAt: string;
   updatedAt: string;

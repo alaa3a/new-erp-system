@@ -4,6 +4,7 @@ import { entryRepository } from '../repositories/entryRepository';
 import { accountRepository } from '../repositories/accountRepository';
 import { partnerRepository } from '../repositories/partnerRepository';
 import { inventoryRepository } from '../repositories/inventoryRepository';
+import { inventoryService } from './inventoryService';
 import { postingProfileRepository } from '../repositories/postingProfileRepository';
 import { taxCodeRepository } from '../repositories/taxCodeRepository';
 import { notificationRepository } from '../repositories/userRepository';
@@ -72,8 +73,16 @@ export const invoiceService = {
         }
       }
 
-      if (line.warehouseId && line.lineType !== 'service') {
-        stockMovements.push({ productId: line.productId, warehouseId: line.warehouseId, quantity: invoice.type === 'sales' || invoice.type === 'debit_note' ? -line.quantity : line.quantity, unitCost: line.unitPrice });
+      if (line.lineType !== 'service' && line.productId) {
+        // Task 43 — auto-select the warehouse from the product's default when the line has none.
+        let warehouseId = line.warehouseId ?? invoice.warehouseId;
+        if (!warehouseId) {
+          const product = db.prepare('SELECT defaultWarehouseId FROM product WHERE id = ?').get(line.productId) as any;
+          warehouseId = product?.defaultWarehouseId ?? null;
+        }
+        if (warehouseId) {
+          stockMovements.push({ productId: line.productId, warehouseId, quantity: invoice.type === 'sales' || invoice.type === 'debit_note' ? -line.quantity : line.quantity, unitCost: line.unitPrice });
+        }
       }
     }
 
@@ -88,6 +97,35 @@ export const invoiceService = {
     return { entries, stockMovements };
   },
 
+  /**
+   * Task 43 — validates that every outgoing stock line has enough AVAILABLE
+   * stock (on hand minus reservations) before posting. Throws a clear error
+   * naming the product, available qty and required qty.
+   */
+  validateStockAvailability(invoiceId: number): void {
+    const invoice = invoiceRepository.findById(invoiceId);
+    if (!invoice) throw new NotFoundError('Invoice', invoiceId);
+    const lines = invoiceRepository.findLines(invoiceId);
+    const outgoing = invoice.type === 'sales' || invoice.type === 'debit_note';
+    for (const line of lines) {
+      if (line.lineType === 'service' || !line.productId) continue;
+      let warehouseId = line.warehouseId ?? invoice.warehouseId;
+      if (!warehouseId) {
+        const product = db.prepare('SELECT defaultWarehouseId FROM product WHERE id = ?').get(line.productId) as any;
+        warehouseId = product?.defaultWarehouseId ?? null;
+      }
+      if (!warehouseId) continue;
+      if (outgoing) {
+        const stock = inventoryRepository.getStock(line.productId, warehouseId);
+        const available = stock?.available ?? 0;
+        if (available < line.quantity) {
+          const product = db.prepare('SELECT name FROM product WHERE id = ?').get(line.productId) as any;
+          throw new BusinessRuleError(`Cannot post: Insufficient stock for ${product?.name || `Product #${line.productId}`} (available: ${available}, required: ${line.quantity})`);
+        }
+      }
+    }
+  },
+
   postInvoice(invoiceId: number, userId: string): void {
     const transaction = db.transaction(() => {
       // Re-read inside the transaction — the draft check is atomic with the
@@ -95,6 +133,9 @@ export const invoiceService = {
       const invoice = invoiceRepository.findById(invoiceId);
       if (!invoice) throw new NotFoundError('Invoice', invoiceId);
       if (invoice.status !== 'draft') throw new BusinessRuleError('Only draft invoices can be posted');
+
+      // Task 43 — block posting when any outgoing stock line exceeds availability.
+      this.validateStockAvailability(invoiceId);
 
       const { entries, stockMovements } = this.previewPosting(invoiceId);
 
@@ -144,17 +185,30 @@ export const invoiceService = {
       entryRepository.updateTotals(entryId, totalDebit, totalCredit);
       entryRepository.updateStatus(entryId, 'posted', userId);
 
+      const invoiceLines = invoiceRepository.findLines(invoiceId);
       for (const sm of stockMovements) {
+        // Task 38 — a reservation held for this invoice is consumed as the
+        // units physically leave the warehouse (no-op when nothing was reserved).
+        inventoryRepository.consumeReservation(sm.productId, sm.warehouseId, Math.abs(sm.quantity));
+        // Task 46 — capture the current average cost (fall back to the line's
+        // unit price when no stock row exists yet, e.g. first receipt).
+        const current = inventoryRepository.getStock(sm.productId, sm.warehouseId);
+        const costForMovement = current?.averageCost || sm.unitCost;
         inventoryRepository.upsertStock(sm.productId, sm.warehouseId, sm.quantity, sm.unitCost);
         inventoryRepository.recordMovement({ type: sm.quantity > 0 ? 'receipt' : 'issue', productId: sm.productId, warehouseId: sm.warehouseId, quantity: sm.quantity, unitCost: sm.unitCost, referenceType: 'invoice', referenceId: invoiceId, referenceNumber: invoice.invoiceNumber, postedBy: userId });
+        // Capture the unit cost on the invoice line for profit reporting (Task 46).
+        const line = invoiceLines.find(l => l.productId === sm.productId && l.warehouseId === sm.warehouseId);
+        if (line) invoiceRepository.updateLineCost(line.id, costForMovement);
       }
 
       invoiceRepository.updateStatus(invoiceId, 'posted', userId);
 
+      // Task 39 — stock changed, fire reorder-point notifications if any item dropped low.
+      inventoryService.checkReorderPoints();
+
       // Create notification
       const notifTitle = invoice.type === 'sales' ? 'Invoice Posted' : invoice.type === 'purchase' ? 'Purchase Posted' : invoice.type === 'credit_note' ? 'Credit Note Posted' : 'Debit Note Posted';
       const notifMessage = `${invoice.invoiceNumber} — ${invoice.partnerName} (${invoice.type === 'sales' || invoice.type === 'debit_note' ? '$' + (invoice.totalAmount / 100).toFixed(2) + ' receivable' : '$' + (invoice.totalAmount / 100).toFixed(2) + ' payable'})`;
-      const recipients = [];
       const allUsers = db.prepare('SELECT id FROM users WHERE isActive = 1').all() as { id: number }[];
       for (const user of allUsers) {
         notificationRepository.create({

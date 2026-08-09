@@ -4,7 +4,7 @@ import { StatusBadge, ModalHeader, EmptyState, SearchInput } from '@/components/
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-   Plus, Eye, Edit3, Loader2, Trash2,
+   Plus, Eye, Loader2, Trash2,
   X, AlertTriangle, CheckCircle, Package, BookOpen,
 } from 'lucide-react'
 import SearchSelect from '@/components/form/SearchSelect'

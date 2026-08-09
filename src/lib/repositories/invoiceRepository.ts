@@ -1,7 +1,6 @@
 import { db } from '../db';
 import { Invoice, InvoiceLine } from '@/types/erp';
 import { generateInvoiceNumber } from '../utils/idGenerator';
-import { NotFoundError, BusinessRuleError, ConflictError } from '../utils/errors';
 
 function mapInvoice(row: any): Invoice {
   return {
@@ -33,6 +32,7 @@ function mapLine(row: any): InvoiceLine {
     discountPercent: row.discountPercent || 0,
     vatCodeId: row.vatCodeId || null,
     lineType: row.lineType || 'stock',
+    costAmount: row.costAmount || 0,
   };
 }
 
@@ -85,7 +85,9 @@ export const invoiceRepository = {
     return result.lastInsertRowid as number;
   },
 
-  addLine(line: Omit<InvoiceLine, 'id' | 'createdAt' | 'updatedAt'>): number {
+  // costAmount is optional at line creation (defaults to 0); it is captured
+  // from the warehouse average cost at posting time (Task 46).
+  addLine(line: Omit<InvoiceLine, 'id' | 'createdAt' | 'updatedAt' | 'costAmount'> & { costAmount?: number }): number {
     const now = new Date().toISOString();
     const result = db.prepare(`
       INSERT INTO invoice_line (invoiceId, lineNumber, productId, description, quantity, unitPrice, discountPercent, vatCodeId, vatRate, vatAmount, lineTotal, lineType, warehouseId, costCenterId, accountCode, createdAt, updatedAt)
@@ -125,5 +127,10 @@ export const invoiceRepository = {
 
   deleteLines(invoiceId: number): void {
     db.prepare('DELETE FROM invoice_line WHERE invoiceId = ?').run(invoiceId);
+  },
+
+  /** Task 46 — captures the unit cost of a line at posting time. */
+  updateLineCost(lineId: number, costAmount: number): void {
+    db.prepare('UPDATE invoice_line SET costAmount = ? WHERE id = ?').run(costAmount, lineId);
   },
 };

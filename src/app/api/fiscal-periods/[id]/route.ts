@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fiscalPeriodRepository } from '@/lib/repositories/fiscalPeriodRepository';
 import { auditLogRepository } from '@/lib/repositories/userRepository';
-import { AppError, NotFoundError, handleApiError } from '@/lib/utils/errors';
+import { NotFoundError, handleApiError } from '@/lib/utils/errors';
 import { ensureInitialized } from '@/lib/db';
 import { requireAuth } from '@/lib/auth/middleware';
 import { validate, fiscalPeriodSchema } from '@/lib/validators';
@@ -40,7 +40,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const existing = fiscalPeriodRepository.findById(periodId);
     if (!existing) throw new NotFoundError('FiscalPeriod', periodId);
 
-    const body = await request.json();
     const userId = auth.userId;
 
     fiscalPeriodRepository.close(periodId, String(userId));

@@ -36,4 +36,10 @@ export const warehouseRepository = {
     const result = db.prepare('UPDATE warehouse SET isActive=0, updatedAt=?, version=version+1 WHERE id=? AND version=?').run(now, id, version);
     return result.changes > 0;
   },
+
+  /** Task 37 — number of distinct products with stock in this warehouse (blocks deletion when > 0). */
+  getStockedProductCount(warehouseId: number): number {
+    const row = db.prepare('SELECT count(1) AS count FROM product_warehouse_stock WHERE warehouseId = ? AND quantity > 0').get(warehouseId) as any;
+    return row?.count ?? 0;
+  },
 };

@@ -19,7 +19,7 @@ export function usePagination() {
   const pageSize = parseInt(searchParams.get('pageSize') || '20', 10)
 
   const setFilterAndResetPage = useCallback(
-    <T extends string>(setter: (v: T) => void, value: T) => {
+    <T extends string | number | null>(setter: (v: T) => void, value: T) => {
       if (page > 1) {
         const params = new URLSearchParams(searchParams.toString())
         params.set('page', '1')

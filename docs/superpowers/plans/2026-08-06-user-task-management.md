@@ -158,11 +158,11 @@ Part 1 and Part 2 can be done in parallel.
 | Task | Focus | Status |
 |------|-------|--------|
 | 27 | User UI (tree permissions) | ✅ Done |
-| 28 | Password management | ⬜ |
-| 29 | Account features | ⬜ |
-| 30 | Task DB & API | ⬜ |
-| 31 | Task types & repository | ⬜ |
-| 32 | Task list & Kanban board | ⬜ |
-| 33 | Create/Edit task modal | ⬜ |
-| 34 | My Tasks dashboard | ⬜ |
-| 35 | Task notifications | ⬜ |
+| 28 | Password management | ✅ Done |
+| 29 | Account features | ✅ Done |
+| 30 | Task DB & API | ✅ Done |
+| 31 | Task types & repository | ✅ Done |
+| 32 | Task list & Kanban board | ✅ Done |
+| 33 | Create/Edit task modal | ✅ Done |
+| 34 | My Tasks dashboard | ✅ Done |
+| 35 | Task notifications | ✅ Done |

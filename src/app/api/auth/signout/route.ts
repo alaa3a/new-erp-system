@@ -15,7 +15,7 @@ export async function POST() {
         },
       },
     )
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { success: false, error: 'An error occurred during sign out' },
       { status: 500 },

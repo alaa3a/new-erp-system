@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   TrendingUp, DollarSign, FileText, Users,
   ShoppingCart, BarChart3, Loader2, AlertTriangle, ChevronRight,
-  ListTodo, CircleCheck, Clock, AlertCircle,
+  ListTodo, CircleCheck, Clock, AlertCircle, PackageX,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -88,6 +88,15 @@ const taskStatusLabels: Record<string, string> = {
 
 
 
+interface LowStockAlert {
+  productId: number
+  productCode: string
+  productName: string
+  warehouseName: string
+  quantity: number
+  reorderPoint: number
+}
+
 interface DashboardData {
   revenue: number
   expenses: number
@@ -146,6 +155,8 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
+  const [lowStock, setLowStock] = useState<LowStockAlert[]>([])
+  const [lowStockLoading, setLowStockLoading] = useState(true)
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true)
@@ -185,6 +196,23 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
+
+  const fetchLowStock = useCallback(async () => {
+    setLowStockLoading(true)
+    try {
+      const res = await fetch('/api/inventory/reorder-check')
+      if (res.ok) {
+        const json = await res.json()
+        if (json.success) setLowStock(json.data || [])
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLowStockLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchLowStock() }, [fetchLowStock])
 
   if (loading) {
     return (
@@ -425,6 +453,36 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Low Stock Widget (Task 39) */}
+      {!lowStockLoading && lowStock.length > 0 && (
+        <div className="rounded-2xl border border-red-200 dark:border-red-900 bg-red-50/40 dark:bg-red-950/10 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <PackageX className="w-5 h-5 text-red-500" />
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Low Stock Alerts</h2>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400 text-xs font-bold">{lowStock.length}</span>
+            </div>
+            <Link href="/products" className="text-xs font-medium text-brand-500 hover:text-brand-600 flex items-center gap-1">
+              View Products <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {lowStock.slice(0, 6).map((a, i) => (
+              <div key={`${a.productId}-${i}`} className="flex items-center gap-3 rounded-xl bg-white dark:bg-gray-900 border border-red-100 dark:border-red-900/50 px-3 py-2.5">
+                <div className="rounded-full bg-red-100 dark:bg-red-950/50 p-1.5 shrink-0">
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{a.productName}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">{a.warehouseName} · reorder at {a.reorderPoint}</p>
+                </div>
+                <span className="text-sm font-bold text-red-600 dark:text-red-400 shrink-0">{a.quantity} left</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* My Tasks Widget */}
       {!tasksLoading && computeTaskSummary(tasks).total > 0 && (

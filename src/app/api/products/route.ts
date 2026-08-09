@@ -14,17 +14,10 @@ export async function GET(request: Request) {
     const itemType = searchParams.get('itemType') || undefined
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20', 10)))
-    const parentIdParam = searchParams.get('parentId')
-    const parentId = parentIdParam === 'null' ? null : (parentIdParam ? Number(parentIdParam) : undefined)
-    const categoriesOnly = searchParams.get('category') === 'true'
-    const tree = searchParams.get('tree') === 'true'
+    const categoryIdParam = searchParams.get('categoryId')
+    const categoryId = categoryIdParam === 'null' ? null : (categoryIdParam ? Number(categoryIdParam) : undefined)
 
-    if (tree) {
-      const treeData = productRepository.getTree()
-      return NextResponse.json({ success: true, data: treeData })
-    }
-
-    const result = productRepository.paginate(page, pageSize, search, itemType, parentId, categoriesOnly)
+    const result = productRepository.paginate(page, pageSize, search, itemType, categoryId)
     return NextResponse.json({ success: true, data: result.data, total: result.total, page, pageSize })
   } catch (error) {
     return handleApiError(error)
@@ -38,14 +31,6 @@ export async function POST(request: Request) {
     await ensureInitialized()
     const body = validate(createProductSchema, await request.json())
 
-    // Validate parent exists
-    if (body.parentId) {
-      const parent = productRepository.findById(body.parentId)
-      if (!parent) {
-        return NextResponse.json({ success: false, error: 'Parent product not found' }, { status: 404 })
-      }
-    }
-
     const id = productRepository.create({
       name: body.name,
       description: body.description,
@@ -58,8 +43,7 @@ export async function POST(request: Request) {
       defaultWarehouseId: body.warehouseId,
       reorderPoint: body.minStock,
       isActive: body.isActive !== false,
-      parentId: body.parentId ?? null,
-      isCategory: body.isCategory ?? false,
+      categoryId: body.categoryId ?? null,
       profileId: body.profileId ?? null,
     })
     auditLogRepository.log({ userId: auth.userId, action: 'create', entityType: 'product', entityId: id })

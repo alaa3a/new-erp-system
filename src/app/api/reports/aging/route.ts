@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     await ensureInitialized();
     const { searchParams } = new URL(request.url);
     const params = Object.fromEntries(searchParams.entries());
-    const { partnerId, startDate, endDate } = validate(agingReportSchema, params);
+    const { startDate, endDate } = validate(agingReportSchema, params);
 
     const partnerAging = reportingService.getPartnerAging();
     const overdueReceivables = agingService.getOverdueReceivables();

@@ -52,6 +52,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const whId = Number(id)
     const existing = warehouseRepository.findById(whId)
     if (!existing) throw new NotFoundError('Warehouse', id)
+
+    // Task 37 — delete validation: block when any product still has stock here.
+    const stockedProducts = warehouseRepository.getStockedProductCount(whId)
+    if (stockedProducts > 0) {
+      return NextResponse.json({ success: false, error: `Cannot delete warehouse: ${stockedProducts} products stored` }, { status: 422 })
+    }
+
     warehouseRepository.softDelete(whId, existing.version)
     auditLogRepository.log({ userId: auth.userId, action: 'delete', entityType: 'warehouse', entityId: whId })
     return NextResponse.json({ success: true })

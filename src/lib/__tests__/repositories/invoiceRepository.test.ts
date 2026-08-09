@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { setupTestDatabase, teardownTestDatabase, seedTestData } from '../test-helper';
 import { invoiceRepository } from '../../repositories/invoiceRepository';
-import { db } from '../../db';
 
 describe('invoiceRepository', () => {
   let data: any;

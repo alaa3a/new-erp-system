@@ -26,6 +26,12 @@ export async function POST(request: NextRequest) {
     if (auth instanceof NextResponse) return auth
     const { productId, warehouseId, newQuantity, reason } = body
 
+    // Task 42 — service items carry no stock and must be rejected outright.
+    const productRow = db.prepare('SELECT itemType FROM product WHERE id = ?').get(productId) as any
+    if (productRow?.itemType === 'service') {
+      return NextResponse.json({ success: false, error: 'Cannot adjust stock for service item' }, { status: 422 })
+    }
+
     // Get current stock before adjustment
     const current = inventoryRepository.getStock(productId, warehouseId)
 

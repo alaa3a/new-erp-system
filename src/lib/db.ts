@@ -366,6 +366,18 @@ function initDb() {
       FOREIGN KEY(parentId) REFERENCES product(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS product_category (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT,
+      isActive INTEGER NOT NULL DEFAULT 1,
+      parentId INTEGER REFERENCES product_category(id) ON DELETE SET NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1
+    );
+
     CREATE TABLE IF NOT EXISTS product_profile (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       code TEXT UNIQUE NOT NULL,
@@ -822,6 +834,36 @@ function initDb() {
   // Migration: product categories (parent-child hierarchy)
   try { db.exec('ALTER TABLE product ADD COLUMN parentId INTEGER REFERENCES product(id) ON DELETE SET NULL'); } catch { /* column may already exist */ }
   try { db.exec('ALTER TABLE product ADD COLUMN isCategory INTEGER NOT NULL DEFAULT 0'); } catch { /* column may already exist */ }
+  // Migration: separate product_category table (Phase 0)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS product_category (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT,
+        isActive INTEGER NOT NULL DEFAULT 1,
+        parentId INTEGER REFERENCES product_category(id) ON DELETE SET NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+  } catch { /* table may already exist */ }
+  // Migration: add categoryId to product table
+  try { db.exec('ALTER TABLE product ADD COLUMN categoryId INTEGER REFERENCES product_category(id)'); } catch { /* column may already exist */ }
+  // Migration: backfill product_category from existing product categories
+  try {
+    const existingCats = db.prepare("SELECT id, code, name, description, isActive, parentId, createdAt, updatedAt, version FROM product WHERE isCategory = 1 AND deletedAt IS NULL").all() as any[];
+    if (existingCats.length > 0) {
+      const insertCat = db.prepare('INSERT OR IGNORE INTO product_category (id, code, name, description, isActive, parentId, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      const updateProduct = db.prepare('UPDATE product SET categoryId = ? WHERE parentId = ? AND isCategory = 0');
+      for (const cat of existingCats) {
+        insertCat.run(cat.id, cat.code, cat.name, cat.description, cat.isActive, cat.parentId, cat.createdAt, cat.updatedAt, cat.version);
+        updateProduct.run(cat.id, cat.id);
+      }
+    }
+  } catch { /* ignore — backfill is best-effort */ }
   try { db.exec('ALTER TABLE business_partner ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   try { db.exec('ALTER TABLE account ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   // Migration: fix child accounts incorrectly marked as system accounts
@@ -1163,8 +1205,8 @@ function seedInitialData() {
   // create their own tax groups and types (avoids a protected system "VAT"
   // group that cannot be deleted from the UI).
 
-  // Seed product categories (parent-child hierarchy)
-  const catCount = db.prepare("SELECT count(1) AS count FROM product WHERE isCategory = 1").get<{ count: number }>()?.count ?? 0;
+  // Seed product categories (parent-child hierarchy) — now in separate product_category table
+  const catCount = db.prepare('SELECT count(1) AS count FROM product_category').get<{ count: number }>()?.count ?? 0;
   if (catCount === 0) {
     const now = new Date().toISOString();
     const categories: [string, string][] = [
@@ -1172,9 +1214,9 @@ function seedInitialData() {
       ['CAT-CLOTH', 'Clothing'],
       ['CAT-SERV', 'Services'],
     ];
-    const catStmt = db.prepare('INSERT INTO product (code, name, itemType, unitOfMeasure, isCategory, isActive, createdAt, updatedAt, version) VALUES (?, ?, \'stock\', \'pcs\', 1, 1, ?, ?, 1)');
+    const catStmt = db.prepare('INSERT INTO product_category (code, name, description, isActive, parentId, createdAt, updatedAt, version) VALUES (?, ?, ?, 1, NULL, ?, ?, 1)');
     for (const [code, name] of categories) {
-      catStmt.run(code, name, now, now);
+      catStmt.run(code, name, '', now, now);
     }
   }
 }

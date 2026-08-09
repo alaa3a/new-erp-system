@@ -6,11 +6,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Search, Loader2, AlertTriangle,
   ArrowDownCircle, ArrowUpCircle, RefreshCw, SlidersHorizontal,
-  ExternalLink, Package,
+  ExternalLink, Package, ArrowLeftRight,
 } from 'lucide-react'
 import DatePicker from '@/components/form/input/DatePicker'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
+import { useToast } from '@/components/ui/toast/ToastProvider'
 import type { Warehouse } from '@/types/erp'
 
 interface Movement {
@@ -67,7 +68,15 @@ const movementTypeStyles: Record<string, { bg: string; text: string; icon: React
 
 const movementTypes = ['', 'receipt', 'issue', 'transfer', 'adjustment', 'return'] as const
 
+interface StockProduct {
+  id: number
+  code: string
+  name: string
+  itemType: string
+}
+
 export default function InventoryMovementsPage() {
+  const toast = useToast()
   const [movements, setMovements] = useState<Movement[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -82,9 +91,18 @@ export default function InventoryMovementsPage() {
 
   // Reference data
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [products, setProducts] = useState<StockProduct[]>([])
+  const [stockByProduct, setStockByProduct] = useState<Record<string, { quantity: number; available: number }>>({})
 
   // Detail modal
   const [detailTarget, setDetailTarget] = useState<Movement | null>(null)
+
+  // Transfer modal (Task 36)
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferForm, setTransferForm] = useState({ productId: '', fromWarehouseId: '', toWarehouseId: '', quantity: '', reason: '' })
+  const [transferError, setTransferError] = useState('')
+  const [transferring, setTransferring] = useState(false)
+  const [sourceStock, setSourceStock] = useState<string>('')
 
   const fetchMovements = useCallback(async () => {
     setLoading(true)
@@ -108,13 +126,81 @@ export default function InventoryMovementsPage() {
 
   const fetchRefData = useCallback(async () => {
     try {
-      const [whRes] = await Promise.all([fetch('/api/warehouses')])
+      const [whRes, stockRes] = await Promise.all([
+        fetch('/api/warehouses'),
+        fetch('/api/inventory/stock'),
+      ])
       if (whRes.ok) { const wj = await whRes.json(); if (wj.success) setWarehouses(wj.data) }
+      // The stock API returns every stock row unpaginated (all warehouses) —
+      // use it to build both the per-warehouse availability map and the
+      // product picker (avoids the 100-row cap on the paginated products API).
+      if (stockRes.ok) {
+        const sj = await stockRes.json()
+        if (sj.success) {
+          const map: Record<string, { quantity: number; available: number }> = {}
+          const productMap = new Map<number, StockProduct>()
+          for (const s of sj.data) {
+            map[`${s.productId}-${s.warehouseId}`] = { quantity: s.quantity, available: s.available }
+            if (!productMap.has(s.productId)) {
+              productMap.set(s.productId, { id: s.productId, code: s.code, name: s.productName, itemType: s.itemType })
+            }
+          }
+          setStockByProduct(map)
+          setProducts([...productMap.values()])
+        }
+      }
     } catch { /* ignore */ }
   }, [])
 
   useEffect(() => { fetchMovements() }, [fetchMovements])
   useEffect(() => { fetchRefData() }, [fetchRefData])
+
+  // ── Transfer helpers (Task 36) ──
+  const openTransfer = () => {
+    setTransferForm({ productId: '', fromWarehouseId: '', toWarehouseId: '', quantity: '', reason: '' })
+    setTransferError(''); setSourceStock(''); setShowTransfer(true)
+  }
+
+  const selectedSourceStock = transferForm.productId && transferForm.fromWarehouseId
+    ? stockByProduct[`${transferForm.productId}-${transferForm.fromWarehouseId}`]
+    : undefined
+
+  const handleTransfer = async () => {
+    setTransferError('')
+    const qty = Number(transferForm.quantity)
+    if (!transferForm.productId || !transferForm.fromWarehouseId || !transferForm.toWarehouseId || !qty || qty <= 0) {
+      setTransferError('Product, both warehouses and a positive quantity are required')
+      return
+    }
+    if (transferForm.fromWarehouseId === transferForm.toWarehouseId) {
+      setTransferError('Source and destination warehouses must be different')
+      return
+    }
+    setTransferring(true)
+    try {
+      const res = await fetch('/api/inventory/transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: Number(transferForm.productId),
+          fromWarehouseId: Number(transferForm.fromWarehouseId),
+          toWarehouseId: Number(transferForm.toWarehouseId),
+          quantity: qty,
+          reason: transferForm.reason,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Transfer failed')
+      setShowTransfer(false)
+      toast.success(json.data?.message || 'Stock transferred')
+      fetchMovements()
+      fetchRefData()
+    } catch (err: any) {
+      setTransferError(err?.message || 'Transfer failed')
+    } finally {
+      setTransferring(false)
+    }
+  }
 
   // Client-side search filter (by product name or movement number)
   const filtered = useMemo(() => {
@@ -155,8 +241,16 @@ export default function InventoryMovementsPage() {
             Track all stock receipts, issues, transfers, and adjustments across warehouses.
           </p>
         </div>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openTransfer}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors shadow-sm"
+          >
+            <ArrowLeftRight className="w-4 h-4" />
+            Transfer Stock
+          </button>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm ${
             showFilters || hasActiveFilters
               ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30 dark:text-brand-400 border border-brand-200 dark:border-brand-800'
@@ -170,7 +264,8 @@ export default function InventoryMovementsPage() {
               {(typeFilter ? 1 : 0) + (warehouseFilter ? 1 : 0) + (startDate || endDate ? 1 : 0) + (searchQuery ? 1 : 0)}
             </span>
           )}
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -462,6 +557,101 @@ export default function InventoryMovementsPage() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* Transfer Stock modal (Task 36) */}
+      <Modal isOpen={showTransfer} onClose={() => setShowTransfer(false)} className="max-w-xl p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+          <ArrowLeftRight className="w-5 h-5 text-brand-500" /> Transfer Stock
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">Move stock between warehouses. Both movement records are written atomically.</p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Product *</label>
+            <select
+              value={transferForm.productId}
+              onChange={e => { setTransferForm({ ...transferForm, productId: e.target.value }); setSourceStock('') }}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+            >
+              <option value="">-- Select product --</option>
+              {products.map(p => (
+                <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">From Warehouse *</label>
+              <select
+                value={transferForm.fromWarehouseId}
+                onChange={e => setTransferForm({ ...transferForm, fromWarehouseId: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+              >
+                <option value="">-- Select --</option>
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">To Warehouse *</label>
+              <select
+                value={transferForm.toWarehouseId}
+                onChange={e => setTransferForm({ ...transferForm, toWarehouseId: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+              >
+                <option value="">-- Select --</option>
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {selectedSourceStock && (
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 px-3 py-2.5 text-xs">
+              <p className="text-blue-700 dark:text-blue-300">
+                Source stock: <strong>{selectedSourceStock.quantity} on hand</strong>
+                {' '}(<strong>{selectedSourceStock.available} available</strong>)
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Quantity *</label>
+              <input
+                type="number" min="1"
+                value={transferForm.quantity}
+                onChange={e => setTransferForm({ ...transferForm, quantity: e.target.value })}
+                placeholder="e.g. 50"
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Reason</label>
+              <input
+                type="text"
+                value={transferForm.reason}
+                onChange={e => setTransferForm({ ...transferForm, reason: e.target.value })}
+                placeholder="e.g. Restocking main warehouse"
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+              />
+            </div>
+          </div>
+
+          {transferError && (
+            <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2">
+              <p className="text-sm text-red-600 dark:text-red-400">{transferError}</p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <Button variant="outline" size="sm" onClick={() => setShowTransfer(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleTransfer} disabled={transferring}>
+              {transferring && <Loader2 className="w-4 h-4 animate-spin" />}
+              {transferring ? 'Transferring...' : 'Execute Transfer'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

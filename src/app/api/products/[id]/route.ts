@@ -41,6 +41,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ...(body.warehouseId !== undefined && { defaultWarehouseId: body.warehouseId }),
       ...(body.minStock !== undefined && { reorderPoint: body.minStock }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
+      ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
+      ...(body.profileId !== undefined && { profileId: body.profileId }),
     }, existing.version)
     if (!updated) throw new ConflictError('Product was modified by another user. Please refresh.')
     auditLogRepository.log({ userId: auth.userId, action: 'update', entityType: 'product', entityId: productId })
@@ -59,6 +61,20 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const productId = Number(id)
     const existing = productRepository.findById(productId)
     if (!existing) throw new NotFoundError('Product', id)
+
+    // Task 37 — delete validation: block when stock exists or the product is
+    // referenced by invoices / purchase orders.
+    const { totalQuantity, warehouseCount } = productRepository.getStockSummary(productId)
+    if (totalQuantity > 0) {
+      return NextResponse.json({ success: false, error: `Cannot delete product: ${totalQuantity} units in stock across ${warehouseCount} warehouses` }, { status: 422 })
+    }
+    if (productRepository.isReferencedByInvoice(productId)) {
+      return NextResponse.json({ success: false, error: 'Cannot delete product: it is referenced by invoices' }, { status: 422 })
+    }
+    if (productRepository.isReferencedByPurchaseOrder(productId)) {
+      return NextResponse.json({ success: false, error: 'Cannot delete product: it is referenced by purchase orders' }, { status: 422 })
+    }
+
     productRepository.softDelete(productId, existing.version)
     auditLogRepository.log({ userId: auth.userId, action: 'delete', entityType: 'product', entityId: productId })
     return NextResponse.json({ success: true })

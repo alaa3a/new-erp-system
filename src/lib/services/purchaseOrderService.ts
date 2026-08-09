@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { purchaseOrderRepository } from '../repositories/purchaseOrderRepository';
 import { inventoryRepository } from '../repositories/inventoryRepository';
+import { inventoryService } from './inventoryService';
 import { invoiceRepository } from '../repositories/invoiceRepository';
 import { notificationRepository } from '../repositories/userRepository';
 import { BusinessRuleError, NotFoundError } from '../utils/errors';
@@ -40,7 +41,6 @@ export const purchaseOrderService = {
       });
 
       let hasPartial = false;
-      let allFull = true;
 
       for (const line of lines) {
         const poLines = purchaseOrderRepository.findLines(poId);
@@ -68,6 +68,9 @@ export const purchaseOrderService = {
 
         if (newReceived < poLine.quantity) hasPartial = true;
       }
+
+      // Task 39 — stock changed, fire reorder-point notifications if any item dropped low.
+      inventoryService.checkReorderPoints();
 
       // Update PO status
       if (hasPartial) {

@@ -78,9 +78,9 @@ export default function StockAdjustmentsPage() {
       if (movRes.ok) { const mj = await movRes.json(); if (mj.success) setAdjustments(mj.data) }
     } catch { /* ignore */ }
     finally { setLoading(false) }
-  }, [])
+  }, [historyFilter])
 
-  useEffect(() => { fetchAll() }, [fetchAll, historyFilter])
+  useEffect(() => { fetchAll() }, [fetchAll])
 
   // ── Derived stock ──
   const stockItems = useMemo(() => products
@@ -513,7 +513,7 @@ export default function StockAdjustmentsPage() {
             </div>
           ) : (
             <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-              {stockData.map((item, idx) => (
+              {stockData.map((item) => (
                 <button
                   key={`${item.productId}-${item.warehouseId}`}
                   onClick={() => {

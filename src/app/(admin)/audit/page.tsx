@@ -5,11 +5,10 @@ import { formatDate } from '@/lib/formatters'
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import {
    Loader2, AlertTriangle, FileText,
-  ChevronDown, ChevronUp, Eye, Activity,
+  Eye, Activity,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
-import type { AuditLog } from '@/types/erp'
 
 // ─── Constants ─────────────────────────────────────────────────────────
 

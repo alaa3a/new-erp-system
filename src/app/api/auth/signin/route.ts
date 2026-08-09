@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
 
     // Return user data (without passwordHash)
     const { passwordHash, ...safeUser } = user
+    void passwordHash
 
     return NextResponse.json(
       { success: true, user: safeUser },

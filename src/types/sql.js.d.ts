@@ -1,10 +1,13 @@
 declare module 'sql.js' {
+  export type SqlValue = number | string | Uint8Array | null;
+  export type SqlRow = Record<string, SqlValue>;
+
   interface SqlJsStatic {
     Database: new (data?: ArrayLike<number> | Buffer) => Database;
   }
 
   interface Database {
-    run(sql: string, params?: any[]): Database;
+    run(sql: string, params?: unknown[]): Database;
     exec(sql: string): QueryExecResult[];
     prepare(sql: string): Statement;
     export(): Uint8Array;
@@ -13,17 +16,17 @@ declare module 'sql.js' {
   }
 
   interface Statement {
-    bind(params?: any[]): boolean;
+    bind(params?: unknown[]): boolean;
     step(): boolean;
-    getAsObject(): any;
+    getAsObject(): SqlRow;
     free(): void;
   }
 
   interface QueryExecResult {
     columns: string[];
-    values: any[][];
+    values: SqlValue[][];
   }
 
-  export default function initSqlJs(): Promise<SqlJsStatic>;
+  export default function initSqlJs(config?: { locateFile?: (file: string) => string }): Promise<SqlJsStatic>;
   export { SqlJsStatic, Database, Statement, QueryExecResult };
 }

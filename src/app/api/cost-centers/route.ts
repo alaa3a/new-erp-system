@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { costCenterRepository } from '@/lib/repositories/costCenterRepository'
 import { auditLogRepository } from '@/lib/repositories/userRepository'
-import { handleApiError, ValidationError } from '@/lib/utils/errors'
+import { handleApiError } from '@/lib/utils/errors'
 import { ensureInitialized } from '@/lib/db'
 import { validate, createCostCenterSchema } from '@/lib/validators'
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { partnerRepository } from '@/lib/repositories/partnerRepository'
 import { auditLogRepository } from '@/lib/repositories/userRepository'
-import { handleApiError, NotFoundError, ConflictError, ValidationError } from '@/lib/utils/errors'
+import { handleApiError, NotFoundError, ConflictError } from '@/lib/utils/errors'
 import { ensureInitialized } from '@/lib/db'
 import { validate, updatePartnerSchema } from '@/lib/validators'
 

@@ -275,7 +275,6 @@ describe('entryRepository', () => {
   describe('category filtering', () => {
     it('should filter entries by a specific category', () => {
       const catId = 999001;
-      const now = new Date().toISOString();
       // Create two entries, one in the category and one not
       const id = entryRepository.create({ entryDate: '2026-07-29', description: 'Categorized', categoryId: catId, createdBy: 'test' });
       entryRepository.create({ entryDate: '2026-07-29', description: 'Uncategorized', createdBy: 'test' });

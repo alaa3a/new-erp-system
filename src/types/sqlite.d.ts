@@ -1,4 +1,6 @@
 declare module '@vercel/sqlite' {
+  export type SqlRow = Record<string, unknown>;
+
   export class Database {
     constructor(path: string);
     exec(sql: string): void;
@@ -7,8 +9,8 @@ declare module '@vercel/sqlite' {
   }
 
   export class Statement {
-    run(...params: any[]): { changes: number; lastInsertRowid: number | bigint };
-    get(...params: any[]): any;
-    all(...params: any[]): any[];
+    run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint };
+    get(...params: unknown[]): SqlRow | undefined;
+    all(...params: unknown[]): SqlRow[];
   }
 }

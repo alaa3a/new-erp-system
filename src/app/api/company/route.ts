@@ -28,7 +28,7 @@ export async function PUT(request: NextRequest) {
       const updated = companyRepository.get();
       return Response.json({ success: true, data: updated });
     } else {
-      const id = companyRepository.create(body);
+      companyRepository.create(body);
       const created = companyRepository.get();
       return Response.json({ success: true, data: created }, { status: 201 });
     }

@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { usePagination } from '@/hooks/usePagination'
 import {
    Plus, Eye, Edit3, Loader2, Trash2,
-  X, BadgeCheck, Package, Archive, Link2, AlertTriangle,
+  X, BadgeCheck, Package, Archive, Link2, AlertTriangle, FileText,
 } from 'lucide-react'
 import SearchSelect from '@/components/form/SearchSelect'
 import DatePicker from '@/components/form/input/DatePicker'
@@ -152,6 +152,13 @@ function PurchaseOrdersPageContent() {
   const [receiveLines, setReceiveLines] = useState<{ poLineId: number; productId: number; description: string; maxQty: number; quantity: number; unitCost: number }[]>([])
   const [receiveWarehouseId, setReceiveWarehouseId] = useState<number | null>(null)
   const [receiveSubmitting, setReceiveSubmitting] = useState(false)
+
+  // Create Invoice from PO (Task 47 — three-way matching UI)
+  const [invoiceFromPOTarget, setInvoiceFromPOTarget] = useState<PurchaseOrder | null>(null)
+  const [invoiceFromPOLines, setInvoiceFromPOLines] = useState<{ poLineId: number; productId: number; description: string; toInvoiceQty: number; unitPrice: number; discountPercent: number; amount: number }[]>([])
+  const [invoiceFromPOLoading, setInvoiceFromPOLoading] = useState(false)
+  const [invoiceFromPOSubmitting, setInvoiceFromPOSubmitting] = useState(false)
+  const [invoiceFromPOError, setInvoiceFromPOError] = useState('')
 
   // Confirmations
   const [approveTarget, setApproveTarget] = useState<PurchaseOrder | null>(null)
@@ -459,6 +466,65 @@ function PurchaseOrdersPageContent() {
     finally { setReceiveSubmitting(false) }
   }
 
+  // ─── Create Invoice from PO (Task 47) ────────────────────────────────
+  const openInvoiceFromPO = async (po: PurchaseOrder) => {
+    setInvoiceFromPOTarget(po)
+    setInvoiceFromPOLines([])
+    setInvoiceFromPOError('')
+    setInvoiceFromPOLoading(true)
+    try {
+      const res = await fetch(`/api/purchase-orders/${po.id}`)
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to load PO') }
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'Failed to load PO')
+      // Lines with received-but-not-fully-invoiced quantities are invoiceable.
+      const lines = (json.data.lines || [])
+        .filter((l: POLine) => l.receivedQuantity > 0 && l.invoicedQuantity < l.receivedQuantity)
+        .map((l: POLine) => {
+          const qty = l.receivedQuantity - l.invoicedQuantity
+          const discount = l.discountPercent || 0
+          return {
+            poLineId: l.id,
+            productId: l.productId,
+            description: l.description,
+            toInvoiceQty: qty,
+            unitPrice: l.unitPrice,
+            discountPercent: discount,
+            amount: qty * l.unitPrice * (1 - discount / 100),
+          }
+        })
+      setInvoiceFromPOLines(lines)
+    } catch (err: any) {
+      setInvoiceFromPOError(err?.message || 'Failed to load PO lines')
+    } finally {
+      setInvoiceFromPOLoading(false)
+    }
+  }
+
+  const handleCreateInvoiceFromPO = async () => {
+    if (!invoiceFromPOTarget) return
+    setInvoiceFromPOSubmitting(true)
+    setInvoiceFromPOError('')
+    try {
+      const res = await fetch('/api/invoices/from-po', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purchaseOrderId: invoiceFromPOTarget.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to create invoice')
+      const invoiceNumber = json.data?.invoiceNumber || ''
+      const poNumber = invoiceFromPOTarget.poNumber
+      setInvoiceFromPOTarget(null)
+      await fetchPOs()
+      toast.success(invoiceNumber ? `Purchase invoice ${invoiceNumber} created from ${poNumber}` : `Purchase invoice created from ${poNumber}`)
+    } catch (err: any) {
+      setInvoiceFromPOError(err?.message || 'Failed to create invoice')
+    } finally {
+      setInvoiceFromPOSubmitting(false)
+    }
+  }
+
   // Options
   const vendorOptions = useMemo(() => partners.filter(p => p.type === 'vendor' || p.type === 'both').map(p => ({ id: p.id, label: `${p.code} — ${p.name}` })), [partners])
   const productOptions = useMemo(() => products.filter(p => p.isActive !== false).map(p => ({ id: p.id, label: `${p.code} — ${p.name} (${p.unitOfMeasure})` })), [products])
@@ -585,7 +651,10 @@ function PurchaseOrdersPageContent() {
                             <button onClick={() => openReceiveForm(po)} className="p-1.5 rounded-lg text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-950/30 transition-colors" title="Receive"><Package className="w-3.5 h-3.5" /></button>
                           )}
                           {(po.status === 'fully_received' || po.status === 'partially_received') && (
-                            <button onClick={() => setCloseTarget(po)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Close"><Archive className="w-3.5 h-3.5" /></button>
+                            <>
+                              <button onClick={() => openInvoiceFromPO(po)} className="p-1.5 rounded-lg text-gray-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors" title="Create Invoice from PO"><FileText className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => setCloseTarget(po)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Close"><Archive className="w-3.5 h-3.5" /></button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -902,6 +971,69 @@ function PurchaseOrdersPageContent() {
           <Button size="sm" onClick={handleReceive} disabled={receiveSubmitting || receiveLines.length === 0 || !receiveWarehouseId} className="flex items-center gap-2 !bg-green-600 hover:!bg-green-700">
             {receiveSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
             Receive Goods
+          </Button>
+        </div>
+      </Modal>
+
+      {/* ═══ CREATE INVOICE FROM PO MODAL (Task 47) ═══ */}
+      <Modal isOpen={!!invoiceFromPOTarget} onClose={() => setInvoiceFromPOTarget(null)} className="max-w-2xl p-0" showCloseButton={false}>
+        <ModalHeader title="Create Invoice from PO" subtitle={invoiceFromPOTarget ? `${invoiceFromPOTarget.poNumber} — ${invoiceFromPOTarget.partnerName}` : undefined} onClose={() => setInvoiceFromPOTarget(null)} />
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {invoiceFromPOLoading ? (
+            <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 text-brand-500 animate-spin" /><span className="ml-2 text-sm text-gray-400">Loading invoiceable lines...</span></div>
+          ) : invoiceFromPOLines.length === 0 ? (
+            <div className="text-center py-10">
+              <FileText className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">No lines to invoice — everything received on this PO has already been invoiced (or nothing has been received yet).</p>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 px-4 py-3 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                  A purchase invoice will be created for the <span className="font-semibold">received but not yet invoiced</span> quantities below, and linked to this PO (three-way matching). The invoice is created as a draft for review and posting.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead><tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+                    <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 dark:text-gray-400">Description</th>
+                    <th className="text-right py-2 px-3 text-xs font-medium text-gray-500 dark:text-gray-400">Qty</th>
+                    <th className="text-right py-2 px-3 text-xs font-medium text-gray-500 dark:text-gray-400">Unit Price</th>
+                    <th className="text-right py-2 px-3 text-xs font-medium text-gray-500 dark:text-gray-400">Amount</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {invoiceFromPOLines.map(l => (
+                      <tr key={l.poLineId}>
+                        <td className="py-2 px-3 text-xs text-gray-900 dark:text-white">{l.description || `#${l.productId}`}</td>
+                        <td className="py-2 px-3 text-xs text-right font-medium text-gray-900 dark:text-white">{l.toInvoiceQty}</td>
+                        <td className="py-2 px-3 text-xs text-right text-gray-600 dark:text-gray-400">
+                          {formatCurrency(l.unitPrice)}
+                          {l.discountPercent > 0 && <span className="ml-1 text-[10px] text-red-500">−{l.discountPercent}%</span>}
+                        </td>
+                        <td className="py-2 px-3 text-xs text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(l.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                      <td colSpan={3} className="py-2.5 px-3 text-xs font-semibold text-gray-700 dark:text-gray-300 text-right">Invoice Total</td>
+                      <td className="py-2.5 px-3 text-xs font-bold text-brand-600 dark:text-brand-400 text-right">{formatCurrency(invoiceFromPOLines.reduce((s, l) => s + l.amount, 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          )}
+
+          {invoiceFromPOError && <div className="rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 px-4 py-2.5"><p className="text-sm text-red-700 dark:text-red-400">{invoiceFromPOError}</p></div>}
+        </div>
+        <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3 bg-gray-50 dark:bg-gray-900/50 rounded-b-3xl">
+          <Button variant="outline" size="sm" onClick={() => setInvoiceFromPOTarget(null)} disabled={invoiceFromPOSubmitting}>Cancel</Button>
+          <Button size="sm" onClick={handleCreateInvoiceFromPO} disabled={invoiceFromPOSubmitting || invoiceFromPOLoading || invoiceFromPOLines.length === 0} className="flex items-center gap-2 !bg-purple-600 hover:!bg-purple-700">
+            {invoiceFromPOSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+            {invoiceFromPOSubmitting ? 'Creating Invoice...' : 'Create Invoice'}
           </Button>
         </div>
       </Modal>
