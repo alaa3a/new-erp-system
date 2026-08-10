@@ -39,11 +39,29 @@ describe('db backup / restore', () => {
   });
 
   it('replaceDatabase swaps the shared db to the uploaded file', async () => {
-    // Marker: add a row to the running DB, export, then wipe that table state via swap to a fresh file.
-    const bytes = getDbBytes();
-    await replaceDatabase(bytes); // replace with an equal valid file
-    const count = db.prepare('SELECT count(1) AS c FROM account').get<{ c: number }>()!.c;
-    expect(count).toBeGreaterThan(0);
+    // Capture the normal DB before any swap so we can restore it afterwards.
+    const originalBytes = getDbBytes();
+    const originalCount = db.prepare('SELECT count(1) AS c FROM account').get<{ c: number }>()!.c;
+
+    // Build a separate, valid ERP-shaped file carrying a distinguishable marker row.
+    const SQL = await initSqlJs(DEFAULT_SQLJS_OPTS);
+    const marker = new SQL.Database();
+    marker.run('CREATE TABLE account (id INTEGER PRIMARY KEY, code TEXT, name TEXT, type TEXT)');
+    marker.run("INSERT INTO account (code, name, type) VALUES ('MARKER-1', 'Marker Account', 'asset')");
+    const markerBytes = marker.export();
+    marker.close();
+
+    // The uploaded file becomes the database: the marker must be visible.
+    await replaceDatabase(markerBytes);
+    const markerCount = db.prepare('SELECT count(1) AS c FROM account WHERE code = ?').get<{ c: number }>('MARKER-1')!.c;
+    expect(markerCount).toBe(1);
+
+    // Restore the normal DB so later tests are not polluted, and prove it is back.
+    await replaceDatabase(originalBytes);
+    const markerGone = db.prepare('SELECT count(1) AS c FROM account WHERE code = ?').get<{ c: number }>('MARKER-1')!.c;
+    const restoredCount = db.prepare('SELECT count(1) AS c FROM account').get<{ c: number }>()!.c;
+    expect(markerGone).toBe(0);
+    expect(restoredCount).toBe(originalCount);
   });
 
   it('replaceDatabase rejects an empty upload', async () => {
