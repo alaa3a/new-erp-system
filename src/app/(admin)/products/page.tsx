@@ -61,15 +61,6 @@ const emptyForm = (): ProductFormData => ({
   defaultWarehouseId: null, reorderPoint: 0, isActive: true, profileId: null,
 })
 
-/** Chart-of-accounts style code suggestion: parent code + sequence (e.g. CAT-ELEC-01). */
-function generateSuggestedCode(products: Product[], parentId: number | null): string {
-  if (!parentId) return ''
-  const parent = products.find(p => p.id === parentId)
-  if (!parent) return ''
-  const siblings = products.filter(p => p.parentId === parentId)
-  return `${parent.code}-${String(siblings.length + 1).padStart(2, '0')}`
-}
-
 export default function ProductsPage() {
   return (
     <Suspense fallback={<div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-brand-500 animate-spin" /><span className="ml-2 text-sm text-gray-500 dark:text-gray-400">Loading products...</span></div>}>
@@ -170,6 +161,15 @@ function ProductsPageContent() {
   const getChildren = (parentId: number) => filteredProducts.filter(p => p.parentId === parentId)
   const hasChildren = (id: number) => products.some(p => p.parentId === id)
 
+  // Total number of descendants across all levels (for cascade messaging)
+  const countDescendants = (parentId: number): number => {
+    let count = 0
+    for (const p of products) {
+      if (p.parentId === parentId) count += 1 + countDescendants(p.id)
+    }
+    return count
+  }
+
   const toggleExpand = (id: number) => {
     setExpanded(prev => {
       const next = new Set(prev)
@@ -236,7 +236,7 @@ function ProductsPageContent() {
   const openAddChild = (parent: Product) => {
     setEditingProduct(null)
     setProfilePreset(null)
-    setFormData({ ...emptyForm(), parentId: parent.id, code: generateSuggestedCode(products, parent.id) })
+    setFormData({ ...emptyForm(), parentId: parent.id })
     setFormError(''); setShowForm(true)
   }
 
@@ -653,16 +653,13 @@ function ProductsPageContent() {
                 value={formData.parentId}
                 onChange={(val) => {
                   const parentId = val ? Number(val) : null
-                  setFormData({ ...formData, parentId, code: generateSuggestedCode(products, parentId) })
+                  setFormData({ ...formData, parentId })
                 }}
                 placeholder="Select group..."
                 noneLabel="None (Top-level)"
                 searchPlaceholder="Search groups..."
                 notFoundLabel="No groups found"
               />
-              {!editingProduct && formData.parentId && (
-                <p className="text-[11px] text-gray-400 mt-1">Auto-suggested: parent code + sequence</p>
-              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Product Type <span className="text-red-400">*</span></label>
@@ -696,7 +693,7 @@ function ProductsPageContent() {
           {/* Code */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Code</label>
-            <input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Auto-generated if empty"
+            <input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="e.g. PR-001"
               className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
           </div>
 
@@ -891,7 +888,10 @@ function ProductsPageContent() {
 
       {/* Toggle Active Modal */}
       <Modal isOpen={!!toggleTarget} onClose={() => setToggleTarget(null)} className="max-w-md p-6">
-        {toggleTarget && (
+        {toggleTarget && (() => {
+          const totalDescendants = countDescendants(toggleTarget.id)
+          const directChildren = products.filter(p => p.parentId === toggleTarget.id).length
+          return (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="rounded-full bg-amber-50 dark:bg-amber-950/50 p-2.5">{toggleTarget.isActive ? <PowerOff className="w-5 h-5 text-amber-500" /> : <Power className="w-5 h-5 text-green-500" />}</div>
@@ -903,6 +903,26 @@ function ProductsPageContent() {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Are you sure you want to {toggleTarget.isActive ? 'deactivate' : 'activate'} <strong>{toggleTarget.name}</strong>?
             </p>
+            {totalDescendants > 0 && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/50">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Current status</span>
+                  <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${toggleTarget.isActive ? 'bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400' : 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                    {toggleTarget.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="px-4 py-2.5">
+                  <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      {toggleTarget.isActive ? 'Deactivating will also deactivate' : 'Activating will also activate'}{' '}
+                      <strong>{totalDescendants} sub-item{totalDescendants !== 1 ? 's' : ''}</strong> at all levels
+                      (direct: {directChildren}, nested: {totalDescendants - directChildren}).
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-end gap-3 pt-2">
               <Button variant="outline" size="sm" onClick={() => setToggleTarget(null)}>Cancel</Button>
               <Button size="sm" onClick={handleToggleConfirm} disabled={toggling}>
@@ -911,7 +931,8 @@ function ProductsPageContent() {
               </Button>
             </div>
           </div>
-        )}
+          )
+        })()}
       </Modal>
 
       {/* Delete Confirmation Modal — COA-style prevention: groups that still

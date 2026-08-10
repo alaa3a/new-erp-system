@@ -84,6 +84,29 @@ export const productRepository = {
     return false;
   },
 
+  /** Total number of descendants across all levels (groups + items). */
+  countDescendants(id: number): number {
+    let count = 0;
+    const children = db.prepare('SELECT id FROM product WHERE parentId = ? AND deletedAt IS NULL').all(id) as any[];
+    for (const child of children) {
+      count += 1 + this.countDescendants(child.id);
+    }
+    return count;
+  },
+
+  /** Toggles active state for the node and all descendants at every level. */
+  cascadeToggleActive(id: number, active: boolean): void {
+    const now = new Date().toISOString();
+    const updateChildren = (parentId: number) => {
+      const children = db.prepare('SELECT id FROM product WHERE parentId = ? AND deletedAt IS NULL').all(parentId) as any[];
+      for (const child of children) {
+        db.prepare('UPDATE product SET isActive=?, updatedAt=?, version=version+1 WHERE id=?').run(active ? 1 : 0, now, child.id);
+        updateChildren(child.id);
+      }
+    };
+    updateChildren(id);
+  },
+
   create(data: Omit<Product, 'id' | 'code' | 'createdAt' | 'updatedAt' | 'version'> & { code?: string }): number {
     const now = new Date().toISOString();
     const code = data.code?.trim() || generateProductCode();

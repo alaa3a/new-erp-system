@@ -140,4 +140,39 @@ describe('productRepository', () => {
       expect(all.find(p => p.id === 1)).toBeUndefined();
     });
   });
+
+  describe('countDescendants / cascadeToggleActive', () => {
+    function createNode(name: string, parentId: number | null, isCategory = false): number {
+      return productRepository.create({
+        name, description: '', itemType: 'stock', unitOfMeasure: 'pcs',
+        salesPrice: 0, purchasePrice: 0, vatCodeId: null, purchaseVatCodeId: null,
+        defaultWarehouseId: null, reorderPoint: 0, isActive: true, parentId, isCategory, profileId: null,
+      });
+    }
+
+    it('should count descendants across all levels', () => {
+      const parent = createNode('Parent', null, true);
+      const child = createNode('Child', parent, true);
+      const grandchild = createNode('Grandchild', child);
+      createNode('Sibling', parent);
+
+      expect(productRepository.countDescendants(parent)).toBe(3);
+      expect(productRepository.countDescendants(child)).toBe(1);
+      expect(productRepository.countDescendants(grandchild)).toBe(0);
+    });
+
+    it('should deactivate all descendants at every level', () => {
+      const parent = createNode('Cascade Parent', null, true);
+      const child = createNode('Cascade Child', parent, true);
+      const grandchild = createNode('Cascade Grandchild', child);
+      const orphan = createNode('Cascade Orphan', null);
+
+      productRepository.cascadeToggleActive(parent, false);
+
+      expect(productRepository.findById(parent)!.isActive).toBe(true); // only descendants
+      expect(productRepository.findById(child)!.isActive).toBe(false);
+      expect(productRepository.findById(grandchild)!.isActive).toBe(false);
+      expect(productRepository.findById(orphan)!.isActive).toBe(true);
+    });
+  });
 });

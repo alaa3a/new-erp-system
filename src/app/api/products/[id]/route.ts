@@ -75,6 +75,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ...(body.profileId !== undefined && { profileId: body.profileId }),
     }, existing.version)
     if (!updated) throw new ConflictError('Product was modified by another user. Please refresh.')
+
+    // Deactivating/activating a group cascades to all descendants at every level
+    // (same pattern as the chart of accounts toggle).
+    if (body.isActive !== undefined && body.isActive !== existing.isActive) {
+      const descendants = productRepository.countDescendants(productId)
+      if (descendants > 0) productRepository.cascadeToggleActive(productId, body.isActive)
+    }
+
     auditLogRepository.log({ userId: auth.userId, action: 'update', entityType: 'product', entityId: productId })
     return NextResponse.json({ success: true })
   } catch (error) {
