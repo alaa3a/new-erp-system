@@ -5,14 +5,14 @@ import { ClearFiltersButton, SearchInput, StatusBadge, StatCard } from '@/compon
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, Suspense } from 'react'
 import {
   Plus, Edit3, Trash2, AlertTriangle, Loader2,
-  ChevronDown, ChevronRight, Power, PowerOff, Layers, MoreVertical, Link2,
+  ChevronDown, ChevronUp, ChevronRight, Power, PowerOff, Layers, MoreVertical, Link2,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { ProfileSelector } from '@/components/products/ProfileSelector'
 import SearchSelect from '@/components/form/SearchSelect'
-import type { Product, ItemType, Warehouse, TaxCode, Account, CostCenter } from '@/types/erp'
+import type { Product, ProductProfile, ItemType, Warehouse, TaxCode, Account, CostCenter } from '@/types/erp'
 
 interface ProfileAccountPreset {
   salesAccountId: number | null;
@@ -73,7 +73,9 @@ function ProductsPageContent() {
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
+  const [profiles, setProfiles] = useState<ProductProfile[]>([])
   const [profilePreset, setProfilePreset] = useState<ProfileAccountPreset | null>(null)
+  const [showProfileTable, setShowProfileTable] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lowStockIds, setLowStockIds] = useState<Set<number>>(new Set())
@@ -111,13 +113,14 @@ function ProductsPageContent() {
 
   const fetchRefs = useCallback(async () => {
     try {
-      const [wRes, tRes, aRes, ccRes] = await Promise.all([
-        fetch('/api/warehouses'), fetch('/api/tax-codes'), fetch('/api/accounts'), fetch('/api/cost-centers'),
+      const [wRes, tRes, aRes, ccRes, pRes] = await Promise.all([
+        fetch('/api/warehouses'), fetch('/api/tax-codes'), fetch('/api/accounts'), fetch('/api/cost-centers'), fetch('/api/products/profiles'),
       ])
       if (wRes.ok) { const wJson = await wRes.json(); if (wJson.success) setWarehouses(wJson.data) }
       if (tRes.ok) { const tJson = await tRes.json(); if (tJson.success) setTaxCodes(tJson.data) }
       if (aRes.ok) { const aJson = await aRes.json(); if (aJson.success) setAccounts(aJson.data) }
       if (ccRes.ok) { const ccJson = await ccRes.json(); if (ccJson.success) setCostCenters(ccJson.data) }
+      if (pRes.ok) { const pJson = await pRes.json(); if (pJson.success) setProfiles(pJson.data) }
     } catch { /* silent */ }
   }, [])
 
@@ -219,6 +222,22 @@ function ProductsPageContent() {
       }
     } catch { /* silent */ }
   }, [])
+
+  const profileCode = profilePreset ? (profiles.find(p => p.id === formData.profileId)?.code ?? '') : ''
+  const profileName = profilePreset ? (profiles.find(p => p.id === formData.profileId)?.name ?? '') : ''
+  const profileDescription = profilePreset ? (profiles.find(p => p.id === formData.profileId)?.description ?? '') : ''
+  const profileTableRows: { type: 'tax' | 'account'; label: string; id: number | null }[] = profilePreset ? [
+    { type: 'tax', label: 'Tax — Sales', id: formData.vatCodeId },
+    { type: 'tax', label: 'Tax — Purchase', id: formData.purchaseVatCodeId },
+    { type: 'account', label: 'Sales Account', id: profilePreset.salesAccountId },
+    { type: 'account', label: 'Purchase Account', id: profilePreset.purchaseAccountId },
+    { type: 'account', label: 'Inventory Account', id: profilePreset.inventoryAccountId },
+    { type: 'account', label: 'COGS Account', id: profilePreset.cogsAccountId },
+    { type: 'account', label: 'AR Account', id: profilePreset.arAccountId },
+    { type: 'account', label: 'AP Account', id: profilePreset.apAccountId },
+    { type: 'account', label: 'Cash Account', id: profilePreset.cashAccountId },
+    { type: 'account', label: 'Discount Account', id: profilePreset.discountAccountId },
+  ] : []
 
   const openAddRoot = (isCategory: boolean) => {
     setEditingProduct(null)
@@ -488,10 +507,11 @@ function ProductsPageContent() {
     return map
   }, [costCenters])
 
-  const taxTypeOptions = useMemo(() => taxCodes
-    .filter(t => t.isActive && !t.isGroup)
-    .map(t => ({ id: t.id, label: `${t.code} (${t.rate}%)` })),
-  [taxCodes])
+  const taxCodeMap = useMemo(() => {
+    const map = new Map<number, TaxCode>()
+    for (const t of taxCodes) map.set(t.id, t)
+    return map
+  }, [taxCodes])
 
   // A group being edited that still contains sub-items cannot be converted to
   // a sellable item — the Product Type field is locked with a hint (COA-style edit
@@ -736,44 +756,72 @@ function ProductsPageContent() {
                   }}
                 />
                 {profilePreset && (
-                  <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Posting accounts (read-only, from profile)</p>
-                    <div className="space-y-1.5">
-                      {[
-                        { label: 'Sales', id: profilePreset.salesAccountId },
-                        { label: 'Purchase', id: profilePreset.purchaseAccountId },
-                        { label: 'Inventory', id: profilePreset.inventoryAccountId },
-                        { label: 'COGS', id: profilePreset.cogsAccountId },
-                        { label: 'AR', id: profilePreset.arAccountId },
-                        { label: 'AP', id: profilePreset.apAccountId },
-                        { label: 'Cash', id: profilePreset.cashAccountId },
-                        { label: 'Discount', id: profilePreset.discountAccountId },
-                      ].map(row => {
-                        const acc = row.id != null ? accountMap.get(row.id) : undefined
-                        if (!acc) return null
-                        const lt = acc.linkType ?? (acc.costCenterId ? 'cost_center' : null)
-                        const hint = lt === 'partner'
-                          ? `Requires partner — AR/AP account`
-                          : lt === 'cost_center'
-                            ? `Linked to Cost Center${acc.costCenterId && costCenterMap.get(acc.costCenterId) ? `: ${costCenterMap.get(acc.costCenterId)!.name}` : ''}`
-                            : lt === 'employee'
-                              ? 'Linked to Employees'
-                              : null
-                        return (
-                          <div key={row.label} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-gray-400 shrink-0">{row.label}</span>
-                            <div className="min-w-0 text-right">
-                              <span className="text-gray-700 dark:text-gray-300 truncate inline-block max-w-full">{(acc.code || '')} — {acc.name}</span>
-                              {hint && (
-                                <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-                                  <Link2 className="w-3 h-3" /> {hint}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
+                  <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Profile — {profileCode}</p>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{profileName}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowProfileTable(!showProfileTable)}
+                        className="p-1.5 text-gray-400 hover:text-brand-500 transition-colors"
+                        aria-label={showProfileTable ? 'Hide profile data' : 'Show profile data'}
+                      >
+                        {showProfileTable ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
                     </div>
+                    {showProfileTable && (
+                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {profileDescription && (
+                          <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{profileDescription}</div>
+                        )}
+                        {profileTableRows.map(row => {
+                          if (row.type === 'tax') {
+                            const tax = row.id != null ? taxCodeMap.get(row.id) : undefined
+                            return (
+                              <div key={row.label} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                                <span className="text-gray-400 shrink-0">{row.label}</span>
+                                <span className="text-gray-700 dark:text-gray-300 font-medium text-right">
+                                  {tax ? `${tax.code} — ${tax.name} (${tax.rate}%)` : '—'}
+                                </span>
+                              </div>
+                            )
+                          }
+                          const acc = row.id != null ? accountMap.get(row.id) : undefined
+                          if (!acc) {
+                            return (
+                              <div key={row.label} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                                <span className="text-gray-400 shrink-0">{row.label}</span>
+                                <span className="text-gray-300 dark:text-gray-600 text-right">—</span>
+                              </div>
+                            )
+                          }
+                          const lt = acc.linkType ?? (acc.costCenterId ? 'cost_center' : null)
+                          const hint = lt === 'partner'
+                            ? `Requires partner — AR/AP account`
+                            : lt === 'cost_center'
+                              ? `Linked to Cost Center${acc.costCenterId && costCenterMap.get(acc.costCenterId) ? `: ${costCenterMap.get(acc.costCenterId)!.name}` : ''}`
+                              : lt === 'employee'
+                                ? 'Linked to Employees'
+                                : null
+                          return (
+                            <div key={row.label} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                              <span className="text-gray-400 shrink-0">{row.label}</span>
+                              <div className="min-w-0 text-right">
+                                <span className="text-gray-700 dark:text-gray-300 truncate inline-block max-w-full">{(acc.code || '')} — {acc.name}</span>
+                                <span className="ml-2 text-[10px] uppercase text-gray-400 dark:text-gray-500">({acc.type})</span>
+                                {hint && (
+                                  <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                                    <Link2 className="w-3 h-3" /> {hint}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
