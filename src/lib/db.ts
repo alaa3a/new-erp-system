@@ -2,6 +2,7 @@ import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import path from 'path';
 import { hashPassword } from '@/lib/auth/password';
+import { ValidationError } from '@/lib/utils/errors';
 
 const DB_PATH = process.env.DATABASE_PATH || 'erp.sqlite';
 
@@ -1253,6 +1254,88 @@ function seedInitialData() {
   }
 }
 
+/** Export the full in-memory database as raw SQLite bytes (for backup downloads). */
+function getDbExportBytes(): Uint8Array {
+  return ensureSync().export();
+}
+
+/** Replace the running database with an uploaded SQLite file. Validates before swapping. */
+async function replaceDatabaseHelper(bytes: Uint8Array): Promise<void> {
+  const state = getState();
+  if (!bytes || bytes.length === 0) {
+    throw new ValidationError('Uploaded backup file is empty');
+  }
+  const SQL = await initSqlJs({
+    locateFile: (file: string) => path.join(process.cwd(), 'node_modules/sql.js/dist', file),
+  });
+  // A transaction may have started while the WASM was loading — refuse to swap
+  // out a database another request is mid-write on.
+  if (state.inTransaction) throw new ValidationError('Cannot restore database while a transaction is open');
+  // Validate fully before touching state.db: sql.js does not throw on the
+  // constructor for invalid bytes — the failure surfaces on the first exec().
+  let candidate: SqlJsDatabase | null = null;
+  try {
+    candidate = new SQL.Database(bytes);
+    const check = candidate.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='account'");
+    if (!check.length || !check[0].values.length) {
+      throw new ValidationError('Uploaded file is not an ERP database (no account table)');
+    }
+    const auditCheck = candidate.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'");
+    if (!auditCheck.length || !auditCheck[0].values.length) {
+      throw new ValidationError('Uploaded file is not an ERP database (no audit_log table)');
+    }
+  } catch (err) {
+    if (candidate) {
+      try {
+        candidate.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    if (err instanceof ValidationError) throw err;
+    throw new ValidationError('Uploaded file is not a valid SQLite database');
+  }
+  const previous = state.db;
+  // Persist the candidate to disk BEFORE swapping it in, so a disk write
+  // failure leaves the running database intact in both memory and on disk.
+  candidate.exec('PRAGMA foreign_keys = ON');
+  const data = candidate.export();
+  try {
+    writeFileSync(DB_PATH, Buffer.from(data));
+  } catch (err) {
+    try {
+      candidate.close();
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
+  state.db = candidate;
+  state.inTransaction = false;
+  state.initialized = true;
+  if (previous) {
+    try {
+      previous.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function replaceDatabase(bytes: Uint8Array): Promise<void> {
+  const state = getState();
+  if (state.inTransaction) throw new ValidationError('Cannot restore database while a transaction is open');
+  return replaceDatabaseHelper(bytes);
+}
+
+function getDbBytes(): Uint8Array {
+  return getDbExportBytes();
+}
+
+function getDbFilePath(): string {
+  return DB_PATH;
+}
+
 /** Reset the database module state for testing. Only use in test suites. */
 function resetForTest(): void {
   const state = getState();
@@ -1262,4 +1345,4 @@ function resetForTest(): void {
   state.inTransaction = false;
 }
 
-export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave };
+export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave, getDbBytes, replaceDatabase, getDbFilePath };
