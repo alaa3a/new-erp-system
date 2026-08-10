@@ -111,6 +111,7 @@ const navItems: NavItem[] = [
       { name: "Document Sequences", path: "/settings/document-sequences", permission: "settings.manage" },
       { name: "Product Profiles", path: "/settings/product-profiles", permission: "settings.manage" },
       { name: "System Settings", path: "/settings", permission: "settings.manage" },
+      { name: "Backup & Restore", path: "/settings/backup-restore", permission: "settings.manage" },
       { name: "User Management", path: "/users", permission: "user.view" },
       { name: "My Profile", path: "/profile" },
     ],
