@@ -1315,6 +1315,10 @@ function getDbBytes(): Uint8Array {
   return getDbExportBytes();
 }
 
+function getDbFilePath(): string {
+  return DB_PATH;
+}
+
 /** Reset the database module state for testing. Only use in test suites. */
 function resetForTest(): void {
   const state = getState();
@@ -1324,4 +1328,4 @@ function resetForTest(): void {
   state.inTransaction = false;
 }
 
-export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave, getDbBytes, replaceDatabase };
+export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave, getDbBytes, replaceDatabase, getDbFilePath };
