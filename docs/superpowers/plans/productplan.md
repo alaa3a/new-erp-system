@@ -1,5 +1,9 @@
 # Product Page & Product Profile Plan
 
+> **Status:** COMPLETE — Part A + Part B (Tasks 1–10) implemented & shipped in
+> `1a5f9d4` (Part A, restyle) and `1ced7d7` (Part B, profile posting).
+> Verified: `npx tsc --noEmit` clean, `npm run build` passes, 429/429 vitest pass.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Restyle the Product page (rename Node Type → Product Type, remove table icons, remove "Add Group" button, 50/50 modal first row, all selects → `SearchSelect` style) AND make the **Product Profile the single source of truth for posting** — it carries all accounts (Sales, Purchase, Inventory, COGS, AR, AP, VAT Out, VAT In, Cash, Discount) + cost center + VAT types; posting_profile and tax-code posting accounts are retired.
