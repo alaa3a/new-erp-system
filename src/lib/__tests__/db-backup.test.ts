@@ -3,10 +3,7 @@ import { setupTestDatabase, teardownTestDatabase } from './test-helper';
 import { db, getDbBytes, replaceDatabase } from '../db';
 import { ValidationError } from '../utils/errors';
 import initSqlJs from 'sql.js';
-import { existsSync, unlinkSync } from 'fs';
 import path from 'path';
-
-const TMP_DB = 'erp-backup-test.sqlite';
 
 const DEFAULT_SQLJS_OPTS = {
   locateFile: (f: string) => path.join(process.cwd(), 'node_modules/sql.js/dist', f),
@@ -19,13 +16,6 @@ describe('db backup / restore', () => {
 
   afterAll(() => {
     teardownTestDatabase();
-    if (existsSync(TMP_DB)) {
-      try {
-        unlinkSync(TMP_DB);
-      } catch {
-        /* ignore */
-      }
-    }
   });
 
   it('getDbBytes returns bytes that load into a fresh SQL.Database', async () => {
@@ -47,17 +37,22 @@ describe('db backup / restore', () => {
     const SQL = await initSqlJs(DEFAULT_SQLJS_OPTS);
     const marker = new SQL.Database();
     marker.run('CREATE TABLE account (id INTEGER PRIMARY KEY, code TEXT, name TEXT, type TEXT)');
+    marker.run('CREATE TABLE audit_log (id INTEGER PRIMARY KEY, userId INTEGER, action TEXT, entityType TEXT, entityId INTEGER, entityNumber TEXT, changes TEXT, ipAddress TEXT, userAgent TEXT, createdAt TEXT)');
     marker.run("INSERT INTO account (code, name, type) VALUES ('MARKER-1', 'Marker Account', 'asset')");
     const markerBytes = marker.export();
     marker.close();
 
-    // The uploaded file becomes the database: the marker must be visible.
-    await replaceDatabase(markerBytes);
-    const markerCount = db.prepare('SELECT count(1) AS c FROM account WHERE code = ?').get<{ c: number }>('MARKER-1')!.c;
-    expect(markerCount).toBe(1);
+    try {
+      // The uploaded file becomes the database: the marker must be visible.
+      await replaceDatabase(markerBytes);
+      const markerCount = db.prepare('SELECT count(1) AS c FROM account WHERE code = ?').get<{ c: number }>('MARKER-1')!.c;
+      expect(markerCount).toBe(1);
+    } finally {
+      // Always restore the normal DB so a failing assertion can't pollute later tests.
+      await replaceDatabase(originalBytes);
+    }
 
-    // Restore the normal DB so later tests are not polluted, and prove it is back.
-    await replaceDatabase(originalBytes);
+    // Prove the original DB is back.
     const markerGone = db.prepare('SELECT count(1) AS c FROM account WHERE code = ?').get<{ c: number }>('MARKER-1')!.c;
     const restoredCount = db.prepare('SELECT count(1) AS c FROM account').get<{ c: number }>()!.c;
     expect(markerGone).toBe(0);
@@ -76,6 +71,15 @@ describe('db backup / restore', () => {
     const SQL = await initSqlJs(DEFAULT_SQLJS_OPTS);
     const other = new SQL.Database();
     other.run('CREATE TABLE foo (id INTEGER)');
+    const bytes = other.export();
+    other.close();
+    await expect(replaceDatabase(bytes)).rejects.toThrow(ValidationError);
+  });
+
+  it('replaceDatabase rejects a valid SQLite DB without the audit_log table', async () => {
+    const SQL = await initSqlJs(DEFAULT_SQLJS_OPTS);
+    const other = new SQL.Database();
+    other.run('CREATE TABLE account (id INTEGER PRIMARY KEY, code TEXT, name TEXT, type TEXT)');
     const bytes = other.export();
     other.close();
     await expect(replaceDatabase(bytes)).rejects.toThrow(ValidationError);

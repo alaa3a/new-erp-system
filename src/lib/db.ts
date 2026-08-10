@@ -1268,6 +1268,9 @@ async function replaceDatabaseHelper(bytes: Uint8Array): Promise<void> {
   const SQL = await initSqlJs({
     locateFile: (file: string) => path.join(process.cwd(), 'node_modules/sql.js/dist', file),
   });
+  // A transaction may have started while the WASM was loading — refuse to swap
+  // out a database another request is mid-write on.
+  if (state.inTransaction) throw new ValidationError('Cannot restore database while a transaction is open');
   // Validate fully before touching state.db: sql.js does not throw on the
   // constructor for invalid bytes — the failure surfaces on the first exec().
   let candidate: SqlJsDatabase | null = null;
@@ -1276,6 +1279,10 @@ async function replaceDatabaseHelper(bytes: Uint8Array): Promise<void> {
     const check = candidate.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='account'");
     if (!check.length || !check[0].values.length) {
       throw new ValidationError('Uploaded file is not an ERP database (no account table)');
+    }
+    const auditCheck = candidate.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'");
+    if (!auditCheck.length || !auditCheck[0].values.length) {
+      throw new ValidationError('Uploaded file is not an ERP database (no audit_log table)');
     }
   } catch (err) {
     if (candidate) {
@@ -1289,9 +1296,23 @@ async function replaceDatabaseHelper(bytes: Uint8Array): Promise<void> {
     throw new ValidationError('Uploaded file is not a valid SQLite database');
   }
   const previous = state.db;
+  // Persist the candidate to disk BEFORE swapping it in, so a disk write
+  // failure leaves the running database intact in both memory and on disk.
+  candidate.exec('PRAGMA foreign_keys = ON');
+  const data = candidate.export();
+  try {
+    writeFileSync(DB_PATH, Buffer.from(data));
+  } catch (err) {
+    try {
+      candidate.close();
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
   state.db = candidate;
   state.inTransaction = false;
-  candidate.exec('PRAGMA foreign_keys = ON');
+  state.initialized = true;
   if (previous) {
     try {
       previous.close();
@@ -1299,10 +1320,6 @@ async function replaceDatabaseHelper(bytes: Uint8Array): Promise<void> {
       /* ignore */
     }
   }
-  // Persist the new database to disk immediately.
-  const data = candidate.export();
-  writeFileSync(DB_PATH, Buffer.from(data));
-  state.initialized = true;
 }
 
 function replaceDatabase(bytes: Uint8Array): Promise<void> {

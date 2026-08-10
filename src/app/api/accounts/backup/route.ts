@@ -9,8 +9,9 @@ export async function GET(request: Request) {
     if (auth instanceof NextResponse) return auth
     await ensureInitialized()
     const bytes = getDbBytes()
+    const payload = new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength)
     const date = new Date().toISOString().slice(0, 10)
-    return new Response(bytes as unknown as BodyInit, {
+    return new Response(payload, {
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': `attachment; filename="erp-backup-${date}.sqlite"`,

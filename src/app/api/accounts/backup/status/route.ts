@@ -15,8 +15,9 @@ export async function GET(request: Request) {
       const st = statSync(getDbFilePath())
       sizeBytes = st.size
       lastModifiedAt = new Date(st.mtime).toISOString()
-    } catch {
-      // DB file not yet persisted to disk — return zeros/null.
+    } catch (err) {
+      // Missing file means the DB has not been persisted yet — return zeros/null.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
     }
     return NextResponse.json({ success: true, data: { sizeBytes, lastModifiedAt } })
   } catch (error) {

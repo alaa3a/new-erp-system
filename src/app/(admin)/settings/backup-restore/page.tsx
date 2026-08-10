@@ -41,6 +41,7 @@ export default function BackupRestorePage() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmError, setConfirmError] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const dragDepthRef = useRef(0)
 
   useEffect(() => {
     fetch('/api/accounts/backup/status')
@@ -69,7 +70,7 @@ export default function BackupRestorePage() {
       a.href = url
       a.download = `erp-backup-${new Date().toISOString().slice(0, 10)}.sqlite`
       a.click()
-      URL.revokeObjectURL(url)
+      setTimeout(() => URL.revokeObjectURL(url), 0)
       const now = new Date().toISOString()
       window.localStorage.setItem(LAST_BACKUP_KEY, now)
       setLastBackup(now)
@@ -101,7 +102,6 @@ export default function BackupRestorePage() {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || `Restore failed (HTTP ${res.status})`)
       setConfirmOpen(false)
-      toast.success('Database restored — reloading...')
       window.location.reload()
     } catch (err: any) {
       setConfirmError(err.message || 'Restore failed. Check the file format.')
@@ -176,10 +176,22 @@ export default function BackupRestorePage() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-            onDragLeave={() => setDragging(false)}
+            onDragOver={(e) => e.preventDefault()}
+            onDragEnter={(e) => {
+              e.preventDefault()
+              dragDepthRef.current += 1
+              setDragging(true)
+            }}
+            onDragLeave={() => {
+              dragDepthRef.current -= 1
+              if (dragDepthRef.current <= 0) {
+                dragDepthRef.current = 0
+                setDragging(false)
+              }
+            }}
             onDrop={(e) => {
               e.preventDefault()
+              dragDepthRef.current = 0
               setDragging(false)
               pickFile(e.dataTransfer.files?.[0] ?? null)
             }}
@@ -208,7 +220,10 @@ export default function BackupRestorePage() {
             type="file"
             accept=".sqlite,application/octet-stream"
             className="hidden"
-            onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              pickFile(e.target.files?.[0] ?? null)
+              e.target.value = ''
+            }}
           />
 
           <div className="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5">
@@ -218,7 +233,7 @@ export default function BackupRestorePage() {
             </p>
           </div>
 
-          <Button onClick={confirmRestore} disabled={!selectedFile} className="w-full bg-amber-500 hover:bg-amber-600">
+          <Button onClick={confirmRestore} disabled={!selectedFile} className="w-full !bg-amber-500 hover:!bg-amber-600">
             <Upload className="w-4 h-4" />
             Restore Database
           </Button>
