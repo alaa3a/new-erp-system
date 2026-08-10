@@ -76,7 +76,7 @@ git commit -m "style(products): code 25% / name 75% on one row in product modal"
 - Consumes: nothing removed from state/API — `formData.vatCodeId`, `formData.purchaseVatCodeId` stay (still saved in `handleSave` and prefilled from profile)
 - Produces: no tax pickers in the modal
 
-- [ ] **Step 1: Delete the tax row**
+- [x] **Step 1: Delete the tax row**
 
 Locate the block inside the `formData.itemType === 'stock'` conditional that contains `Tax Situation — Sales` and `Tax Situation — Purchase` SearchSelects. Delete the entire `<div className="grid grid-cols-2 gap-4">...</div>` wrapping both `SearchSelect`s (the second grid in the stock section).
 
