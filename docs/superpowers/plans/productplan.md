@@ -3,6 +3,12 @@
 > **Status:** COMPLETE — Part A + Part B (Tasks 1–10) implemented & shipped in
 > `1a5f9d4` (Part A, restyle) and `1ced7d7` (Part B, profile posting).
 > Verified: `npx tsc --noEmit` clean, `npm run build` passes, 429/429 vitest pass.
+>
+> **Post-ship simplification:** `vatOutputAccountId`, `vatInputAccountId`, and
+> `defaultCostCenterId` were removed from the product profile — VAT posting
+> account now comes from the line's tax type (`tax_code.accountCode`) and cost
+> centers are chosen per invoice line/invoice (product-level
+> `defaultCostCenterId` still prefills line cost centers).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 

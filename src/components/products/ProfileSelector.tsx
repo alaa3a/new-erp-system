@@ -16,11 +16,8 @@ interface Profile {
   cogsAccountId: number | null;
   arAccountId: number | null;
   apAccountId: number | null;
-  vatOutputAccountId: number | null;
-  vatInputAccountId: number | null;
   cashAccountId: number | null;
   discountAccountId: number | null;
-  defaultCostCenterId: number | null;
 }
 
 interface ProfileSelectorProps {
@@ -61,11 +58,8 @@ export function ProfileSelector({ value, onChange, className = '' }: ProfileSele
           cogsAccountId: p.cogsAccountId,
           arAccountId: p.arAccountId,
           apAccountId: p.apAccountId,
-          vatOutputAccountId: p.vatOutputAccountId,
-          vatInputAccountId: p.vatInputAccountId,
           cashAccountId: p.cashAccountId,
           discountAccountId: p.discountAccountId,
-          defaultCostCenterId: p.defaultCostCenterId,
         });
       }
     }

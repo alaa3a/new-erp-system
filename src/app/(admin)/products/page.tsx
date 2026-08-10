@@ -21,11 +21,8 @@ interface ProfileAccountPreset {
   cogsAccountId: number | null;
   arAccountId: number | null;
   apAccountId: number | null;
-  vatOutputAccountId: number | null;
-  vatInputAccountId: number | null;
   cashAccountId: number | null;
   discountAccountId: number | null;
-  defaultCostCenterId: number | null;
 }
 
 const itemTypes: ItemType[] = ['stock', 'service']
@@ -216,11 +213,8 @@ function ProductsPageContent() {
           cogsAccountId: p.cogsAccountId ?? null,
           arAccountId: p.arAccountId ?? null,
           apAccountId: p.apAccountId ?? null,
-          vatOutputAccountId: p.vatOutputAccountId ?? null,
-          vatInputAccountId: p.vatInputAccountId ?? null,
           cashAccountId: p.cashAccountId ?? null,
           discountAccountId: p.discountAccountId ?? null,
-          defaultCostCenterId: p.defaultCostCenterId ?? null,
         })
       }
     } catch { /* silent */ }
@@ -726,11 +720,8 @@ function ProductsPageContent() {
                         cogsAccountId: preset.cogsAccountId ?? null,
                         arAccountId: preset.arAccountId ?? null,
                         apAccountId: preset.apAccountId ?? null,
-                        vatOutputAccountId: preset.vatOutputAccountId ?? null,
-                        vatInputAccountId: preset.vatInputAccountId ?? null,
                         cashAccountId: preset.cashAccountId ?? null,
                         discountAccountId: preset.discountAccountId ?? null,
-                        defaultCostCenterId: preset.defaultCostCenterId ?? null,
                       })
                       setFormData({
                         ...formData,
@@ -755,8 +746,6 @@ function ProductsPageContent() {
                         { label: 'COGS', id: profilePreset.cogsAccountId },
                         { label: 'AR', id: profilePreset.arAccountId },
                         { label: 'AP', id: profilePreset.apAccountId },
-                        { label: 'VAT Out', id: profilePreset.vatOutputAccountId },
-                        { label: 'VAT In', id: profilePreset.vatInputAccountId },
                         { label: 'Cash', id: profilePreset.cashAccountId },
                         { label: 'Discount', id: profilePreset.discountAccountId },
                       ].map(row => {
@@ -784,14 +773,6 @@ function ProductsPageContent() {
                           </div>
                         )
                       })}
-                      {profilePreset.defaultCostCenterId && costCenterMap.get(profilePreset.defaultCostCenterId) && (
-                        <div className="flex items-center justify-between gap-2 text-xs border-t border-gray-200 dark:border-gray-700 pt-1.5">
-                          <span className="text-gray-400 shrink-0">Default Cost Center</span>
-                          <span className="text-gray-700 dark:text-gray-300 font-medium">
-                            {costCenterMap.get(profilePreset.defaultCostCenterId)!.code} — {costCenterMap.get(profilePreset.defaultCostCenterId)!.name}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}

@@ -12,9 +12,6 @@ export const createProductProfileSchema = z.object({
   cogsAccountId: z.number().int().positive().nullable().optional().default(null),
   arAccountId: z.number().int().positive().nullable().optional().default(null),
   apAccountId: z.number().int().positive().nullable().optional().default(null),
-  vatOutputAccountId: z.number().int().positive().nullable().optional().default(null),
-  vatInputAccountId: z.number().int().positive().nullable().optional().default(null),
   cashAccountId: z.number().int().positive().nullable().optional().default(null),
   discountAccountId: z.number().int().positive().nullable().optional().default(null),
-  defaultCostCenterId: z.number().int().positive().nullable().optional().default(null),
 });

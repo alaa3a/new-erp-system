@@ -27,11 +27,8 @@ export interface ProductProfile {
   cogsAccountId: number | null;
   arAccountId: number | null;
   apAccountId: number | null;
-  vatOutputAccountId: number | null;
-  vatInputAccountId: number | null;
   cashAccountId: number | null;
   discountAccountId: number | null;
-  defaultCostCenterId: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

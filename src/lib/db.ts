@@ -379,11 +379,8 @@ function initDb() {
       cogsAccountId INTEGER,
       arAccountId INTEGER,
       apAccountId INTEGER,
-      vatOutputAccountId INTEGER,
-      vatInputAccountId INTEGER,
       cashAccountId INTEGER,
       discountAccountId INTEGER,
-      defaultCostCenterId INTEGER,
       isActive INTEGER DEFAULT 1,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
@@ -395,11 +392,8 @@ function initDb() {
       FOREIGN KEY (cogsAccountId) REFERENCES account(id),
       FOREIGN KEY (arAccountId) REFERENCES account(id),
       FOREIGN KEY (apAccountId) REFERENCES account(id),
-      FOREIGN KEY (vatOutputAccountId) REFERENCES account(id),
-      FOREIGN KEY (vatInputAccountId) REFERENCES account(id),
       FOREIGN KEY (cashAccountId) REFERENCES account(id),
-      FOREIGN KEY (discountAccountId) REFERENCES account(id),
-      FOREIGN KEY (defaultCostCenterId) REFERENCES cost_center(id)
+      FOREIGN KEY (discountAccountId) REFERENCES account(id)
     );
 
     CREATE TABLE IF NOT EXISTS product_warehouse_stock (
@@ -778,11 +772,8 @@ function initDb() {
       cogsAccountId INTEGER REFERENCES account(id),
       arAccountId INTEGER REFERENCES account(id),
       apAccountId INTEGER REFERENCES account(id),
-      vatOutputAccountId INTEGER REFERENCES account(id),
-      vatInputAccountId INTEGER REFERENCES account(id),
       cashAccountId INTEGER REFERENCES account(id),
       discountAccountId INTEGER REFERENCES account(id),
-      defaultCostCenterId INTEGER REFERENCES cost_center(id),
       isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
@@ -838,10 +829,16 @@ function initDb() {
   // Migration: product profiles (template for product creation)
   try { db.exec('ALTER TABLE product ADD COLUMN profileId INTEGER REFERENCES product_profile(id)'); } catch { /* column may already exist */ }
   // Migration: product profile posting accounts (all account fields on the profile)
-  const profileAccountCols = ['salesAccountId', 'purchaseAccountId', 'inventoryAccountId', 'cogsAccountId', 'arAccountId', 'apAccountId', 'vatOutputAccountId', 'vatInputAccountId', 'cashAccountId', 'discountAccountId', 'defaultCostCenterId'];
+  const profileAccountCols = ['salesAccountId', 'purchaseAccountId', 'inventoryAccountId', 'cogsAccountId', 'arAccountId', 'apAccountId', 'cashAccountId', 'discountAccountId'];
   for (const col of profileAccountCols) {
     try { db.exec(`ALTER TABLE product_profile ADD COLUMN ${col} INTEGER`); } catch { /* column may already exist */ }
   }
+  // Migration: retire VAT account + default cost center from product_profile —
+  // VAT posting account lives on the tax type (tax_code.accountCode) and cost
+  // centers are chosen per invoice line/invoice.
+  try { db.exec('ALTER TABLE product_profile DROP COLUMN vatOutputAccountId'); } catch { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE product_profile DROP COLUMN vatInputAccountId'); } catch { /* column may already be gone */ }
+  try { db.exec('ALTER TABLE product_profile DROP COLUMN defaultCostCenterId'); } catch { /* column may already be gone */ }
   // Migration: soft-delete support — deletedAt column on key entities
   try { db.exec('ALTER TABLE product ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   // Migration: product categories (parent-child hierarchy)

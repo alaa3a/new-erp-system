@@ -26,6 +26,15 @@ function accountCodeFor(accountId: number | null | undefined, fallback: string):
   return row?.code || fallback;
 }
 
+/** VAT posting account comes from the tax type's own account (tax_code.accountCode). */
+function vatAccountCodeFor(line: any, fallback: string): string {
+  if (line.vatCodeId) {
+    const tax = db.prepare('SELECT accountCode FROM tax_code WHERE id = ?').get(line.vatCodeId) as any;
+    if (tax?.accountCode) return tax.accountCode;
+  }
+  return fallback;
+}
+
 interface ResolvedAccounts {
   sales: string;
   purchase: string;
@@ -57,10 +66,10 @@ function resolveLineContext(line: any): { accounts: ResolvedAccounts; costCenter
       cogs: accountCodeFor(pick(product?.cogsAccountId, profile?.cogsAccountId), FALLBACK.cogs),
       ar: accountCodeFor(pick(profile?.arAccountId, null), FALLBACK.ar),
       ap: accountCodeFor(pick(profile?.apAccountId, null), FALLBACK.ap),
-      vatOut: accountCodeFor(pick(profile?.vatOutputAccountId, null), FALLBACK.vatOut),
-      vatIn: accountCodeFor(pick(profile?.vatInputAccountId, null), FALLBACK.vatIn),
+      vatOut: vatAccountCodeFor(line, FALLBACK.vatOut),
+      vatIn: vatAccountCodeFor(line, FALLBACK.vatIn),
     },
-    costCenterId: line.costCenterId ?? pick(product?.defaultCostCenterId, profile?.defaultCostCenterId) ?? null,
+    costCenterId: line.costCenterId ?? null,
   };
 }
 

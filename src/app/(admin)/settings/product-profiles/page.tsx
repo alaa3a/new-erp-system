@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/toast/ToastProvider';
 import { formatDate } from '@/lib/formatters';
 import SearchSelect from '@/components/form/SearchSelect';
 import { buildAccountHierarchyOptions } from '@/lib/accountTree';
-import type { Account, CostCenter, TaxCode } from '@/types/erp';
+import type { Account, TaxCode } from '@/types/erp';
 
 interface ProductProfile {
   id: number;
@@ -23,11 +23,8 @@ interface ProductProfile {
   cogsAccountId: number | null;
   arAccountId: number | null;
   apAccountId: number | null;
-  vatOutputAccountId: number | null;
-  vatInputAccountId: number | null;
   cashAccountId: number | null;
   discountAccountId: number | null;
-  defaultCostCenterId: number | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -44,11 +41,8 @@ interface ProfileFormData {
   cogsAccountId: number | null;
   arAccountId: number | null;
   apAccountId: number | null;
-  vatOutputAccountId: number | null;
-  vatInputAccountId: number | null;
   cashAccountId: number | null;
   discountAccountId: number | null;
-  defaultCostCenterId: number | null;
 }
 
 const ACCOUNT_FIELDS: Array<{ key: keyof ProfileFormData; label: string }> = [
@@ -58,8 +52,6 @@ const ACCOUNT_FIELDS: Array<{ key: keyof ProfileFormData; label: string }> = [
   { key: 'cogsAccountId', label: 'COGS Account' },
   { key: 'arAccountId', label: 'Accounts Receivable (AR)' },
   { key: 'apAccountId', label: 'Accounts Payable (AP)' },
-  { key: 'vatOutputAccountId', label: 'VAT Output (Sales)' },
-  { key: 'vatInputAccountId', label: 'VAT Input (Purchase)' },
   { key: 'cashAccountId', label: 'Cash Account' },
   { key: 'discountAccountId', label: 'Discount Account' },
 ];
@@ -68,8 +60,8 @@ const emptyForm = (): ProfileFormData => ({
   code: '', name: '', description: '',
   salesVatCodeId: null, purchaseVatCodeId: null,
   salesAccountId: null, purchaseAccountId: null, inventoryAccountId: null, cogsAccountId: null,
-  arAccountId: null, apAccountId: null, vatOutputAccountId: null, vatInputAccountId: null,
-  cashAccountId: null, discountAccountId: null, defaultCostCenterId: null,
+  arAccountId: null, apAccountId: null,
+  cashAccountId: null, discountAccountId: null,
 });
 
 /** Renders the linked-dimension hint under an account select (entry-page pattern). */
@@ -110,7 +102,6 @@ export default function ProductProfilesPage() {
   const [deleteTarget, setDeleteTarget] = useState<ProductProfile | null>(null);
 
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
 
   const fetchProfiles = async () => {
@@ -125,14 +116,12 @@ export default function ProductProfilesPage() {
 
   const fetchRefData = useCallback(async () => {
     try {
-      const [aRes, ccRes, tRes] = await Promise.all([
-        fetch('/api/accounts'), fetch('/api/cost-centers'), fetch('/api/tax-codes'),
+      const [aRes, tRes] = await Promise.all([
+        fetch('/api/accounts'), fetch('/api/tax-codes'),
       ]);
       const a = await aRes.json();
-      const cc = await ccRes.json();
       const t = await tRes.json();
       if (a.success) setAccounts(a.data);
-      if (cc.success) setCostCenters(cc.data);
       if (t.success) setTaxCodes(t.data);
     } catch { /* ignore */ }
   }, []);
@@ -156,11 +145,6 @@ export default function ProductProfilesPage() {
     return map;
   }, [accounts]);
 
-  const costCenterOptions = useMemo(() => costCenters
-    .filter(c => c.isActive)
-    .map(c => ({ id: c.id, label: `${c.code} — ${c.name}` })),
-  [costCenters]);
-
   const taxTypeOptions = useMemo(() => {
     const groups = taxCodes.filter(t => t.isGroup);
     return taxCodes
@@ -182,9 +166,7 @@ export default function ProductProfilesPage() {
       salesAccountId: p.salesAccountId, purchaseAccountId: p.purchaseAccountId,
       inventoryAccountId: p.inventoryAccountId, cogsAccountId: p.cogsAccountId,
       arAccountId: p.arAccountId, apAccountId: p.apAccountId,
-      vatOutputAccountId: p.vatOutputAccountId, vatInputAccountId: p.vatInputAccountId,
       cashAccountId: p.cashAccountId, discountAccountId: p.discountAccountId,
-      defaultCostCenterId: p.defaultCostCenterId,
     });
     setShowForm(true);
   };
@@ -258,7 +240,6 @@ export default function ProductProfilesPage() {
               {p.description && <p className="text-sm text-gray-500 mt-2">{p.description}</p>}
               <div className="mt-4 text-xs text-gray-400 space-y-1">
                 <div>Accounts: {ACCOUNT_FIELDS.filter(f => p[f.key as keyof ProductProfile]).length} / {ACCOUNT_FIELDS.length}</div>
-                {p.defaultCostCenterId && <div>Default Cost Center: #{p.defaultCostCenterId}</div>}
               </div>
               <div className="mt-4 text-[11px] text-gray-500 space-y-0.5">
                 {ACCOUNT_FIELDS.slice(0, 4).map(f => {
@@ -325,19 +306,7 @@ export default function ProductProfilesPage() {
             })}
           </div>
 
-          {/* Cost center + VAT types */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Default Cost Center (auto entries)</label>
-            <SearchSelect
-              options={costCenterOptions}
-              value={formData.defaultCostCenterId}
-              onChange={(val) => setFormData({ ...formData, defaultCostCenterId: val ? Number(val) : null })}
-              placeholder="Select cost center..."
-              noneLabel="None"
-              searchPlaceholder="Search cost centers..."
-              notFoundLabel="No cost centers found"
-            />
-          </div>
+          {/* VAT types */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Sales VAT Type</label>

@@ -16,13 +16,12 @@ export const productProfileRepository = {
   create: (data: any) => {
     const now = new Date().toISOString();
     return db.prepare(
-      'INSERT INTO product_profile (code, name, description, salesVatCodeId, purchaseVatCodeId, salesAccountId, purchaseAccountId, inventoryAccountId, cogsAccountId, arAccountId, apAccountId, vatOutputAccountId, vatInputAccountId, cashAccountId, discountAccountId, defaultCostCenterId, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
+      'INSERT INTO product_profile (code, name, description, salesVatCodeId, purchaseVatCodeId, salesAccountId, purchaseAccountId, inventoryAccountId, cogsAccountId, arAccountId, apAccountId, cashAccountId, discountAccountId, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
     ).run(
       data.code, data.name, data.description || '', data.salesVatCodeId || null, data.purchaseVatCodeId || null,
       data.salesAccountId || null, data.purchaseAccountId || null, data.inventoryAccountId || null,
       data.cogsAccountId || null, data.arAccountId || null, data.apAccountId || null,
-      data.vatOutputAccountId || null, data.vatInputAccountId || null, data.cashAccountId || null,
-      data.discountAccountId || null, data.defaultCostCenterId || null,
+      data.cashAccountId || null, data.discountAccountId || null,
       now, now
     ).lastInsertRowid as number;
   },
@@ -30,13 +29,12 @@ export const productProfileRepository = {
   update: (id: number, data: any) => {
     const now = new Date().toISOString();
     return db.prepare(
-      'UPDATE product_profile SET code=?, name=?, description=?, salesVatCodeId=?, purchaseVatCodeId=?, salesAccountId=?, purchaseAccountId=?, inventoryAccountId=?, cogsAccountId=?, arAccountId=?, apAccountId=?, vatOutputAccountId=?, vatInputAccountId=?, cashAccountId=?, discountAccountId=?, defaultCostCenterId=?, updatedAt=? WHERE id=?'
+      'UPDATE product_profile SET code=?, name=?, description=?, salesVatCodeId=?, purchaseVatCodeId=?, salesAccountId=?, purchaseAccountId=?, inventoryAccountId=?, cogsAccountId=?, arAccountId=?, apAccountId=?, cashAccountId=?, discountAccountId=?, updatedAt=? WHERE id=?'
     ).run(
       data.code, data.name, data.description || '', data.salesVatCodeId || null, data.purchaseVatCodeId || null,
       data.salesAccountId || null, data.purchaseAccountId || null, data.inventoryAccountId || null,
       data.cogsAccountId || null, data.arAccountId || null, data.apAccountId || null,
-      data.vatOutputAccountId || null, data.vatInputAccountId || null, data.cashAccountId || null,
-      data.discountAccountId || null, data.defaultCostCenterId || null,
+      data.cashAccountId || null, data.discountAccountId || null,
       now, id
     ).changes > 0;
   },
@@ -58,11 +56,8 @@ export const productProfileRepository = {
       cogsAccountId: profile.cogsAccountId,
       arAccountId: profile.arAccountId,
       apAccountId: profile.apAccountId,
-      vatOutputAccountId: profile.vatOutputAccountId,
-      vatInputAccountId: profile.vatInputAccountId,
       cashAccountId: profile.cashAccountId,
       discountAccountId: profile.discountAccountId,
-      defaultCostCenterId: profile.defaultCostCenterId,
     };
   },
 };

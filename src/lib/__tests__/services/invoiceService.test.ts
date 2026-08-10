@@ -346,9 +346,6 @@ describe('invoiceService', () => {
         cogsAccountId: accountIdByCode('501'),
         arAccountId: accountIdByCode('102'),
         apAccountId: accountIdByCode('201'),
-        vatOutputAccountId: accountIdByCode('202'),
-        vatInputAccountId: accountIdByCode('105'),
-        defaultCostCenterId: null,
       });
       db.prepare('UPDATE product SET profileId = ? WHERE id = ?').run(profileId, data.productIds.widget);
 
