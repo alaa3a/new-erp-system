@@ -818,32 +818,6 @@ function ProductsPageContent() {
                         className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tax Situation — Sales</label>
-                      <SearchSelect
-                        options={taxTypeOptions}
-                        value={formData.vatCodeId}
-                        onChange={(val) => setFormData({ ...formData, vatCodeId: val ? Number(val) : null })}
-                        placeholder="Select tax..."
-                        noneLabel="-- None --"
-                        searchPlaceholder="Search taxes..."
-                        notFoundLabel="No taxes found"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tax Situation — Purchase</label>
-                      <SearchSelect
-                        options={taxTypeOptions}
-                        value={formData.purchaseVatCodeId}
-                        onChange={(val) => setFormData({ ...formData, purchaseVatCodeId: val ? Number(val) : null })}
-                        placeholder="Select tax..."
-                        noneLabel="-- None --"
-                        searchPlaceholder="Search taxes..."
-                        notFoundLabel="No taxes found"
-                      />
-                    </div>
-                  </div>
                 </>
               )}
             </>
