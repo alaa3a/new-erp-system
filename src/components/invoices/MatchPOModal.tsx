@@ -65,7 +65,7 @@ export default function MatchPOModal({
             <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading POs...
           </div>
         ) : (
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
             {filtered.length === 0 ? (
               <p className="text-center py-8 text-sm text-gray-400">No matching purchase orders found.</p>
             ) : (

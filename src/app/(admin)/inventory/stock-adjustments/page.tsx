@@ -238,7 +238,7 @@ export default function StockAdjustmentsPage() {
                             className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2.5 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-brand-500/30"
                           />
                         </div>
-                        <div className="max-h-60 overflow-y-auto py-1">
+                        <div className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
                           {filteredProducts.length === 0 ? (
                             <p className="px-3 py-2 text-xs text-gray-400">No products found</p>
                           ) : (
@@ -512,7 +512,7 @@ export default function StockAdjustmentsPage() {
               <p className="text-sm text-gray-400">No stock data yet</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
               {stockData.map((item) => (
                 <button
                   key={`${item.productId}-${item.warehouseId}`}

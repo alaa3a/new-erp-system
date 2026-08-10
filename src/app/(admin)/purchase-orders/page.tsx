@@ -1102,7 +1102,7 @@ function PurchaseOrdersPageContent() {
           {linkInvoiceLoading ? (
             <div className="flex items-center justify-center py-8 text-sm text-gray-400"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading invoices...</div>
           ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
               {(() => {
                 const filtered = linkInvoiceSearch.trim()
                   ? linkInvoiceList.filter(inv =>

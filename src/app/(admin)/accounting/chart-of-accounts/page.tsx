@@ -900,7 +900,7 @@ export default function ChartOfAccountsPage() {
                           className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                         />
                       </div>
-                      <div className="max-h-48 overflow-y-auto py-1">
+                      <div className="max-h-48 overflow-y-auto py-1 custom-scrollbar">
                         <button
                           type="button"
                           onClick={() => {
@@ -1176,7 +1176,7 @@ export default function ChartOfAccountsPage() {
                             />
                           </div>
                         </div>
-                        <div className="max-h-48 overflow-y-auto py-1">
+                        <div className="max-h-48 overflow-y-auto py-1 custom-scrollbar">
                           <button
                             type="button"
                             onClick={() => { setSelectedCostCenterId(null); setLinkCcSelectOpen(false); setLinkCcSearch('') }}

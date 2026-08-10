@@ -159,7 +159,7 @@ export default function SearchSelect<T extends SearchSelectOption>({
                 className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2.5 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-brand-500/30"
               />
             </div>
-            <div className={`${flipUp ? 'max-h-56' : 'max-h-64'} overflow-y-auto py-1`}>
+            <div className={`${flipUp ? 'max-h-56' : 'max-h-64'} overflow-y-auto py-1 custom-scrollbar rounded-b-xl`}>
               <button
                 type="button"
                 onClick={() => { onChange(''); setOpen(false) }}

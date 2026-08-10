@@ -84,7 +84,7 @@ export function ProfileSelector({ value, onChange, className = '' }: ProfileSele
       )}
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg dark:bg-gray-900 dark:border-gray-700 max-h-60 overflow-y-auto">
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg dark:bg-gray-900 dark:border-gray-700 max-h-60 overflow-y-auto custom-scrollbar rounded-b-lg">
           <button
             type="button"
             onClick={() => handleSelect(null)}
