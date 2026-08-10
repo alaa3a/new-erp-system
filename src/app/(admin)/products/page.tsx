@@ -4,13 +4,14 @@ import { ClearFiltersButton, SearchInput, StatusBadge, StatCard } from '@/compon
 
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, Suspense } from 'react'
 import {
-  Plus, Edit3, Trash2, AlertTriangle, Loader2, Search, Package, Folder, FolderOpen,
+  Plus, Edit3, Trash2, AlertTriangle, Loader2,
   ChevronDown, ChevronRight, Power, PowerOff, Layers, MoreVertical,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { ProfileSelector } from '@/components/products/ProfileSelector'
+import SearchSelect from '@/components/form/SearchSelect'
 import type { Product, ItemType, Warehouse, TaxCode } from '@/types/erp'
 
 const itemTypes: ItemType[] = ['stock', 'service']
@@ -81,8 +82,6 @@ function ProductsPageContent() {
   const [formData, setFormData] = useState<ProductFormData>(emptyForm())
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
-  const [parentOpen, setParentOpen] = useState(false)
-  const [parentSearch, setParentSearch] = useState('')
 
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [deleteError, setDeleteError] = useState('')
@@ -378,9 +377,6 @@ function ProductsPageContent() {
             ) : (
               <span className="w-4 shrink-0" />
             )}
-            {isGroup
-              ? (isOpen ? <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" /> : <Folder className="w-4 h-4 text-amber-500 shrink-0" />)
-              : <Package className="w-4 h-4 text-gray-400 shrink-0" />}
             {/* Chart-of-accounts style: code shown mono before the name */}
             <span className="text-xs font-mono text-gray-500 dark:text-gray-400 w-28 shrink-0 truncate">{product.code}</span>
             <span className={`text-sm truncate min-w-0 ${isGroup ? 'font-semibold' : 'font-medium'} ${product.isActive ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500 line-through'}`}>
@@ -434,9 +430,17 @@ function ProductsPageContent() {
 
   // Groups only — valid parents in the picker
   const groupOptions = useMemo(() => products.filter(p => p.isCategory && p.id !== editingProduct?.id), [products, editingProduct])
+  const parentOptions = useMemo(() => groupOptions.map(g => ({ id: g.id, label: `${g.code} — ${g.name}${!g.isActive ? ' (inactive)' : ''}` })), [groupOptions])
+
+  const warehouseOptions = useMemo(() => warehouses.map(w => ({ id: w.id, label: `${w.code} - ${w.name}` })), [warehouses])
+
+  const taxTypeOptions = useMemo(() => taxCodes
+    .filter(t => t.isActive && !t.isGroup)
+    .map(t => ({ id: t.id, label: `${t.code} (${t.rate}%)` })),
+  [taxCodes])
 
   // A group being edited that still contains sub-items cannot be converted to
-  // a sellable item — the Node Type field is locked with a hint (COA-style edit
+  // a sellable item — the Product Type field is locked with a hint (COA-style edit
   // prevention). The server enforces the same rule.
   const editingGroupChildCount = editingProduct?.isCategory ? products.filter(p => p.parentId === editingProduct.id).length : 0
   const lockNodeType = editingGroupChildCount > 0
@@ -451,9 +455,6 @@ function ProductsPageContent() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => openAddRoot(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-            <Folder className="w-4 h-4" /> Add Group
-          </button>
           <button onClick={() => openAddRoot(false)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors shadow-sm">
             <Plus className="w-4 h-4" /> Add Product
           </button>
@@ -583,109 +584,60 @@ function ProductsPageContent() {
           {editingProduct ? 'Edit Product' : formData.isCategory ? 'Add Group' : formData.parentId ? 'Add Sub-Item' : 'Add Product'}
         </h3>
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1 custom-scrollbar">
-          {/* Parent — first field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Parent Group</label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => { setParentOpen(!parentOpen); if (!parentOpen) setParentSearch('') }}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-left flex items-center justify-between gap-2 transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-              >
-                {formData.parentId ? (
-                  <span className="inline-flex items-center gap-1.5 text-gray-900 dark:text-white">
-                    <Folder className="w-3.5 h-3.5 text-amber-500" />
-                    {(() => { const p = products.find(x => x.id === formData.parentId); return p ? `${p.code} — ${p.name}` : `#${formData.parentId}` })()}
-                  </span>
-                ) : (
-                  <span className="text-gray-400 dark:text-gray-500">None (Top-level)</span>
-                )}
-                <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${parentOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {parentOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => { setParentOpen(false); setParentSearch('') }} />
-                  <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg overflow-hidden">
-                    <div className="p-2 border-b border-gray-100 dark:border-gray-800">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                          type="text" value={parentSearch} onChange={e => setParentSearch(e.target.value)}
-                          placeholder="Search groups..." autoFocus
-                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-9 pr-3 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-48 overflow-y-auto py-1">
-                      <button
-                        type="button"
-                        onClick={() => { setFormData({ ...formData, parentId: null, code: generateSuggestedCode(products, null) }); setParentOpen(false); setParentSearch('') }}
-                        className={`w-full text-left px-3 py-2 text-sm transition-colors ${formData.parentId === null ? 'bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-                      >
-                        <span className="font-medium">None (Top-level)</span>
-                      </button>
-                      {(parentSearch.trim()
-                        ? groupOptions.filter(g => g.code.toLowerCase().includes(parentSearch.toLowerCase()) || g.name.toLowerCase().includes(parentSearch.toLowerCase()))
-                        : groupOptions
-                      ).map(g => (
-                        <button
-                          key={g.id}
-                          type="button"
-                          onClick={() => { setFormData({ ...formData, parentId: g.id, code: generateSuggestedCode(products, g.id) }); setParentOpen(false); setParentSearch('') }}
-                          className={`w-full text-left px-3 py-2 text-sm transition-colors ${formData.parentId === g.id ? 'bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-                        >
-                          <Folder className="w-3.5 h-3.5 text-amber-500 inline mr-2 -mt-0.5" />
-                          <span className="font-mono text-xs text-gray-500 dark:text-gray-400 mr-2">{g.code}</span>
-                          <span>{g.name}</span>
-                          {!g.isActive && <span className="ml-2 text-xs text-gray-400">(inactive)</span>}
-                        </button>
-                      ))}
-                      {groupOptions.length === 0 && (
-                        <p className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">No groups yet — create one first</p>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Code + Node type */}
+          {/* Parent + Product Type — first row, 50/50 */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Code</label>
-              <input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Auto-generated if empty"
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Parent Group</label>
+              <SearchSelect
+                options={parentOptions}
+                value={formData.parentId}
+                onChange={(val) => {
+                  const parentId = val ? Number(val) : null
+                  setFormData({ ...formData, parentId, code: generateSuggestedCode(products, parentId) })
+                }}
+                placeholder="Select group..."
+                noneLabel="None (Top-level)"
+                searchPlaceholder="Search groups..."
+                notFoundLabel="No groups found"
+              />
               {!editingProduct && formData.parentId && (
                 <p className="text-[11px] text-gray-400 mt-1">Auto-suggested: parent code + sequence</p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Node Type <span className="text-red-400">*</span></label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Product Type <span className="text-red-400">*</span></label>
               {lockNodeType ? (
                 <>
                   <div className="w-full rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-                    Group (folder)
+                    Group
                   </div>
                   <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
                     This group contains {editingGroupChildCount} sub-item{editingGroupChildCount > 1 ? 's' : ''} — move or delete them before converting it to a sellable item.
                   </p>
                 </>
               ) : (
-                <select
+                <SearchSelect
+                  options={[
+                    { id: 'group', label: 'Group' },
+                    { id: 'stock', label: 'Stock Item' },
+                    { id: 'service', label: 'Service' },
+                  ]}
                   value={formData.isCategory ? 'group' : formData.itemType}
-                  onChange={e => {
-                    const v = e.target.value
+                  onChange={(val) => {
+                    const v = val ? String(val) : 'stock'
                     setFormData({ ...formData, isCategory: v === 'group', itemType: v === 'service' ? 'service' : 'stock' })
                   }}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-                >
-                  <option value="group">Group (folder)</option>
-                  <option value="stock">Stock Item</option>
-                  <option value="service">Service</option>
-                </select>
+                  placeholder="Select type..."
+                />
               )}
             </div>
+          </div>
+
+          {/* Code */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Code</label>
+            <input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Auto-generated if empty"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
           </div>
 
           {/* Name */}
@@ -753,11 +705,15 @@ function ProductsPageContent() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Default Warehouse</label>
-                      <select value={formData.defaultWarehouseId ?? ''} onChange={e => setFormData({ ...formData, defaultWarehouseId: e.target.value ? Number(e.target.value) : null })}
-                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all">
-                        <option value="">-- Select --</option>
-                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
-                      </select>
+                      <SearchSelect
+                        options={warehouseOptions}
+                        value={formData.defaultWarehouseId}
+                        onChange={(val) => setFormData({ ...formData, defaultWarehouseId: val ? Number(val) : null })}
+                        placeholder="Select warehouse..."
+                        noneLabel="-- Select --"
+                        searchPlaceholder="Search warehouses..."
+                        notFoundLabel="No warehouses found"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Reorder Point (units)</label>
@@ -768,19 +724,27 @@ function ProductsPageContent() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tax Situation — Sales</label>
-                      <select value={formData.vatCodeId ?? ''} onChange={e => setFormData({ ...formData, vatCodeId: e.target.value ? Number(e.target.value) : null })}
-                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all">
-                        <option value="">-- None --</option>
-                        {taxCodes.filter(t => t.isActive && !t.isGroup).map(t => <option key={t.id} value={t.id}>{t.code} ({t.rate}%)</option>)}
-                      </select>
+                      <SearchSelect
+                        options={taxTypeOptions}
+                        value={formData.vatCodeId}
+                        onChange={(val) => setFormData({ ...formData, vatCodeId: val ? Number(val) : null })}
+                        placeholder="Select tax..."
+                        noneLabel="-- None --"
+                        searchPlaceholder="Search taxes..."
+                        notFoundLabel="No taxes found"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tax Situation — Purchase</label>
-                      <select value={formData.purchaseVatCodeId ?? ''} onChange={e => setFormData({ ...formData, purchaseVatCodeId: e.target.value ? Number(e.target.value) : null })}
-                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all">
-                        <option value="">-- None --</option>
-                        {taxCodes.filter(t => t.isActive && !t.isGroup).map(t => <option key={t.id} value={t.id}>{t.code} ({t.rate}%)</option>)}
-                      </select>
+                      <SearchSelect
+                        options={taxTypeOptions}
+                        value={formData.purchaseVatCodeId}
+                        onChange={(val) => setFormData({ ...formData, purchaseVatCodeId: val ? Number(val) : null })}
+                        placeholder="Select tax..."
+                        noneLabel="-- None --"
+                        searchPlaceholder="Search taxes..."
+                        notFoundLabel="No taxes found"
+                      />
                     </div>
                   </div>
                 </>
