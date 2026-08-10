@@ -371,20 +371,35 @@ function initDb() {
       code TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
-      itemType TEXT DEFAULT 'stock',
-      unitOfMeasure TEXT DEFAULT 'pcs',
       salesVatCodeId INTEGER,
       purchaseVatCodeId INTEGER,
-      defaultWarehouseId INTEGER,
-      defaultSalesPrice INTEGER DEFAULT 0,
-      defaultPurchasePrice INTEGER DEFAULT 0,
-      reorderPoint INTEGER DEFAULT 0,
+      salesAccountId INTEGER,
+      purchaseAccountId INTEGER,
+      inventoryAccountId INTEGER,
+      cogsAccountId INTEGER,
+      arAccountId INTEGER,
+      apAccountId INTEGER,
+      vatOutputAccountId INTEGER,
+      vatInputAccountId INTEGER,
+      cashAccountId INTEGER,
+      discountAccountId INTEGER,
+      defaultCostCenterId INTEGER,
       isActive INTEGER DEFAULT 1,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       FOREIGN KEY (salesVatCodeId) REFERENCES tax_code(id),
       FOREIGN KEY (purchaseVatCodeId) REFERENCES tax_code(id),
-      FOREIGN KEY (defaultWarehouseId) REFERENCES warehouse(id)
+      FOREIGN KEY (salesAccountId) REFERENCES account(id),
+      FOREIGN KEY (purchaseAccountId) REFERENCES account(id),
+      FOREIGN KEY (inventoryAccountId) REFERENCES account(id),
+      FOREIGN KEY (cogsAccountId) REFERENCES account(id),
+      FOREIGN KEY (arAccountId) REFERENCES account(id),
+      FOREIGN KEY (apAccountId) REFERENCES account(id),
+      FOREIGN KEY (vatOutputAccountId) REFERENCES account(id),
+      FOREIGN KEY (vatInputAccountId) REFERENCES account(id),
+      FOREIGN KEY (cashAccountId) REFERENCES account(id),
+      FOREIGN KEY (discountAccountId) REFERENCES account(id),
+      FOREIGN KEY (defaultCostCenterId) REFERENCES cost_center(id)
     );
 
     CREATE TABLE IF NOT EXISTS product_warehouse_stock (
@@ -755,14 +770,19 @@ function initDb() {
       code TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
-      itemType TEXT DEFAULT 'stock',
-      unitOfMeasure TEXT DEFAULT 'pcs',
       salesVatCodeId INTEGER REFERENCES tax_code(id),
       purchaseVatCodeId INTEGER REFERENCES tax_code(id),
-      defaultWarehouseId INTEGER REFERENCES warehouse(id),
-      defaultSalesPrice INTEGER DEFAULT 0,
-      defaultPurchasePrice INTEGER DEFAULT 0,
-      reorderPoint INTEGER DEFAULT 0,
+      salesAccountId INTEGER REFERENCES account(id),
+      purchaseAccountId INTEGER REFERENCES account(id),
+      inventoryAccountId INTEGER REFERENCES account(id),
+      cogsAccountId INTEGER REFERENCES account(id),
+      arAccountId INTEGER REFERENCES account(id),
+      apAccountId INTEGER REFERENCES account(id),
+      vatOutputAccountId INTEGER REFERENCES account(id),
+      vatInputAccountId INTEGER REFERENCES account(id),
+      cashAccountId INTEGER REFERENCES account(id),
+      discountAccountId INTEGER REFERENCES account(id),
+      defaultCostCenterId INTEGER REFERENCES cost_center(id),
       isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
@@ -817,6 +837,11 @@ function initDb() {
   try { db.exec('ALTER TABLE invoice ADD COLUMN purchaseOrderId INTEGER REFERENCES purchase_order(id)'); } catch { /* column may already exist */ }
   // Migration: product profiles (template for product creation)
   try { db.exec('ALTER TABLE product ADD COLUMN profileId INTEGER REFERENCES product_profile(id)'); } catch { /* column may already exist */ }
+  // Migration: product profile posting accounts (all account fields on the profile)
+  const profileAccountCols = ['salesAccountId', 'purchaseAccountId', 'inventoryAccountId', 'cogsAccountId', 'arAccountId', 'apAccountId', 'vatOutputAccountId', 'vatInputAccountId', 'cashAccountId', 'discountAccountId', 'defaultCostCenterId'];
+  for (const col of profileAccountCols) {
+    try { db.exec(`ALTER TABLE product_profile ADD COLUMN ${col} INTEGER`); } catch { /* column may already exist */ }
+  }
   // Migration: soft-delete support — deletedAt column on key entities
   try { db.exec('ALTER TABLE product ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   // Migration: product categories (parent-child hierarchy)
@@ -1140,18 +1165,16 @@ function seedInitialData() {
   // Seed product profiles
   const profileCount = db.prepare('SELECT count(1) AS count FROM product_profile').get<{ count: number }>()?.count ?? 0;
   if (profileCount === 0) {
-    const wh = db.prepare('SELECT id FROM warehouse LIMIT 1').get<{ id: number }>();
-    const whId = wh?.id || null;
     const vat = db.prepare('SELECT id FROM tax_code LIMIT 1').get<{ id: number }>();
     const vatId = vat?.id || null;
     const vat2 = db.prepare('SELECT id FROM tax_code ORDER BY id LIMIT 1 OFFSET 1').get<{ id: number }>();
     const vat2Id = vat2?.id || null;
-    const pStmt = db.prepare('INSERT INTO product_profile (code, name, description, itemType, unitOfMeasure, salesVatCodeId, purchaseVatCodeId, defaultWarehouseId, reorderPoint, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const pStmt = db.prepare('INSERT INTO product_profile (code, name, description, salesVatCodeId, purchaseVatCodeId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
     const now2 = new Date().toISOString();
-    pStmt.run('STD', 'Standard Product', 'Default product with standard tax', 'stock', 'pcs', vatId, vatId, whId, 10, now2, now2);
-    pStmt.run('EXM', 'Tax Exempt', 'Zero-rated product', 'stock', 'pcs', null, null, whId, 10, now2, now2);
-    pStmt.run('SVC', 'Service', 'Service item (no stock)', 'service', 'hrs', vatId, null, null, 0, now2, now2);
-    pStmt.run('IMP', 'Import Goods', 'Imported products with customs', 'stock', 'pcs', vat2Id, vat2Id, whId, 20, now2, now2);
+    pStmt.run('STD', 'Standard Product', 'Default product with standard tax', vatId, vatId, now2, now2);
+    pStmt.run('EXM', 'Tax Exempt', 'Zero-rated product', null, null, now2, now2);
+    pStmt.run('SVC', 'Service', 'Service item (no stock)', vatId, null, now2, now2);
+    pStmt.run('IMP', 'Import Goods', 'Imported products with customs', vat2Id, vat2Id, now2, now2);
   }
 
   const taskCount = db.prepare('SELECT count(1) AS count FROM task').get<{ count: number }>()?.count ?? 0;

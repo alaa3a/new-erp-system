@@ -5,14 +5,28 @@ import { ClearFiltersButton, SearchInput, StatusBadge, StatCard } from '@/compon
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect, Suspense } from 'react'
 import {
   Plus, Edit3, Trash2, AlertTriangle, Loader2,
-  ChevronDown, ChevronRight, Power, PowerOff, Layers, MoreVertical,
+  ChevronDown, ChevronRight, Power, PowerOff, Layers, MoreVertical, Link2,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import Button from '@/components/ui/button/Button'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { ProfileSelector } from '@/components/products/ProfileSelector'
 import SearchSelect from '@/components/form/SearchSelect'
-import type { Product, ItemType, Warehouse, TaxCode } from '@/types/erp'
+import type { Product, ItemType, Warehouse, TaxCode, Account, CostCenter } from '@/types/erp'
+
+interface ProfileAccountPreset {
+  salesAccountId: number | null;
+  purchaseAccountId: number | null;
+  inventoryAccountId: number | null;
+  cogsAccountId: number | null;
+  arAccountId: number | null;
+  apAccountId: number | null;
+  vatOutputAccountId: number | null;
+  vatInputAccountId: number | null;
+  cashAccountId: number | null;
+  discountAccountId: number | null;
+  defaultCostCenterId: number | null;
+}
 
 const itemTypes: ItemType[] = ['stock', 'service']
 
@@ -69,6 +83,9 @@ function ProductsPageContent() {
   const [products, setProducts] = useState<Product[]>([])
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([])
+  const [profilePreset, setProfilePreset] = useState<ProfileAccountPreset | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lowStockIds, setLowStockIds] = useState<Set<number>>(new Set())
@@ -106,9 +123,13 @@ function ProductsPageContent() {
 
   const fetchRefs = useCallback(async () => {
     try {
-      const [wRes, tRes] = await Promise.all([fetch('/api/warehouses'), fetch('/api/tax-codes')])
+      const [wRes, tRes, aRes, ccRes] = await Promise.all([
+        fetch('/api/warehouses'), fetch('/api/tax-codes'), fetch('/api/accounts'), fetch('/api/cost-centers'),
+      ])
       if (wRes.ok) { const wJson = await wRes.json(); if (wJson.success) setWarehouses(wJson.data) }
       if (tRes.ok) { const tJson = await tRes.json(); if (tJson.success) setTaxCodes(tJson.data) }
+      if (aRes.ok) { const aJson = await aRes.json(); if (aJson.success) setAccounts(aJson.data) }
+      if (ccRes.ok) { const ccJson = await ccRes.json(); if (ccJson.success) setCostCenters(ccJson.data) }
     } catch { /* silent */ }
   }, [])
 
@@ -182,20 +203,47 @@ function ProductsPageContent() {
   }, [searchQuery, products])
 
   // --- Form openers ---
+  const fetchProfilePreset = useCallback(async (profileId: number) => {
+    try {
+      const res = await fetch(`/api/products/profiles/${profileId}`)
+      const json = await res.json()
+      if (json.success) {
+        const p = json.data
+        setProfilePreset({
+          salesAccountId: p.salesAccountId ?? null,
+          purchaseAccountId: p.purchaseAccountId ?? null,
+          inventoryAccountId: p.inventoryAccountId ?? null,
+          cogsAccountId: p.cogsAccountId ?? null,
+          arAccountId: p.arAccountId ?? null,
+          apAccountId: p.apAccountId ?? null,
+          vatOutputAccountId: p.vatOutputAccountId ?? null,
+          vatInputAccountId: p.vatInputAccountId ?? null,
+          cashAccountId: p.cashAccountId ?? null,
+          discountAccountId: p.discountAccountId ?? null,
+          defaultCostCenterId: p.defaultCostCenterId ?? null,
+        })
+      }
+    } catch { /* silent */ }
+  }, [])
+
   const openAddRoot = (isCategory: boolean) => {
     setEditingProduct(null)
+    setProfilePreset(null)
     setFormData({ ...emptyForm(), isCategory })
     setFormError(''); setShowForm(true)
   }
 
   const openAddChild = (parent: Product) => {
     setEditingProduct(null)
+    setProfilePreset(null)
     setFormData({ ...emptyForm(), parentId: parent.id, code: generateSuggestedCode(products, parent.id) })
     setFormError(''); setShowForm(true)
   }
 
   const openEdit = (product: Product) => {
     setEditingProduct(product)
+    setProfilePreset(null)
+    if (product.profileId) fetchProfilePreset(product.profileId)
     setFormData({
       code: product.code,
       name: product.name,
@@ -434,6 +482,18 @@ function ProductsPageContent() {
 
   const warehouseOptions = useMemo(() => warehouses.map(w => ({ id: w.id, label: `${w.code} - ${w.name}` })), [warehouses])
 
+  const accountMap = useMemo(() => {
+    const map = new Map<number, Account>()
+    for (const a of accounts) map.set(a.id, a)
+    return map
+  }, [accounts])
+
+  const costCenterMap = useMemo(() => {
+    const map = new Map<number, CostCenter>()
+    for (const c of costCenters) map.set(c.id, c)
+    return map
+  }, [costCenters])
+
   const taxTypeOptions = useMemo(() => taxCodes
     .filter(t => t.isActive && !t.isGroup)
     .map(t => ({ id: t.id, label: `${t.code} (${t.rate}%)` })),
@@ -662,23 +722,82 @@ function ProductsPageContent() {
                   value={formData.profileId}
                   onChange={(profileId, preset) => {
                     if (preset) {
+                      setProfilePreset({
+                        salesAccountId: preset.salesAccountId ?? null,
+                        purchaseAccountId: preset.purchaseAccountId ?? null,
+                        inventoryAccountId: preset.inventoryAccountId ?? null,
+                        cogsAccountId: preset.cogsAccountId ?? null,
+                        arAccountId: preset.arAccountId ?? null,
+                        apAccountId: preset.apAccountId ?? null,
+                        vatOutputAccountId: preset.vatOutputAccountId ?? null,
+                        vatInputAccountId: preset.vatInputAccountId ?? null,
+                        cashAccountId: preset.cashAccountId ?? null,
+                        discountAccountId: preset.discountAccountId ?? null,
+                        defaultCostCenterId: preset.defaultCostCenterId ?? null,
+                      })
                       setFormData({
                         ...formData,
                         profileId,
-                        itemType: (preset.itemType || formData.itemType) as ItemType,
-                        unitOfMeasure: preset.unitOfMeasure || formData.unitOfMeasure,
-                        salesPrice: preset.defaultSalesPrice || formData.salesPrice,
-                        purchasePrice: preset.defaultPurchasePrice || formData.purchasePrice,
-                        defaultWarehouseId: preset.defaultWarehouseId ?? formData.defaultWarehouseId,
                         vatCodeId: preset.salesVatCodeId ?? formData.vatCodeId,
                         purchaseVatCodeId: preset.purchaseVatCodeId ?? formData.purchaseVatCodeId,
-                        reorderPoint: preset.reorderPoint ?? formData.reorderPoint,
-                      });
+                      })
                     } else {
-                      setFormData({ ...formData, profileId });
+                      setProfilePreset(null)
+                      setFormData({ ...formData, profileId })
                     }
                   }}
                 />
+                {profilePreset && (
+                  <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Posting accounts (read-only, from profile)</p>
+                    <div className="space-y-1.5">
+                      {[
+                        { label: 'Sales', id: profilePreset.salesAccountId },
+                        { label: 'Purchase', id: profilePreset.purchaseAccountId },
+                        { label: 'Inventory', id: profilePreset.inventoryAccountId },
+                        { label: 'COGS', id: profilePreset.cogsAccountId },
+                        { label: 'AR', id: profilePreset.arAccountId },
+                        { label: 'AP', id: profilePreset.apAccountId },
+                        { label: 'VAT Out', id: profilePreset.vatOutputAccountId },
+                        { label: 'VAT In', id: profilePreset.vatInputAccountId },
+                        { label: 'Cash', id: profilePreset.cashAccountId },
+                        { label: 'Discount', id: profilePreset.discountAccountId },
+                      ].map(row => {
+                        const acc = row.id != null ? accountMap.get(row.id) : undefined
+                        if (!acc) return null
+                        const lt = acc.linkType ?? (acc.costCenterId ? 'cost_center' : null)
+                        const hint = lt === 'partner'
+                          ? `Requires partner — AR/AP account`
+                          : lt === 'cost_center'
+                            ? `Linked to Cost Center${acc.costCenterId && costCenterMap.get(acc.costCenterId) ? `: ${costCenterMap.get(acc.costCenterId)!.name}` : ''}`
+                            : lt === 'employee'
+                              ? 'Linked to Employees'
+                              : null
+                        return (
+                          <div key={row.label} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-gray-400 shrink-0">{row.label}</span>
+                            <div className="min-w-0 text-right">
+                              <span className="text-gray-700 dark:text-gray-300 truncate inline-block max-w-full">{(acc.code || '')} — {acc.name}</span>
+                              {hint && (
+                                <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                                  <Link2 className="w-3 h-3" /> {hint}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {profilePreset.defaultCostCenterId && costCenterMap.get(profilePreset.defaultCostCenterId) && (
+                        <div className="flex items-center justify-between gap-2 text-xs border-t border-gray-200 dark:border-gray-700 pt-1.5">
+                          <span className="text-gray-400 shrink-0">Default Cost Center</span>
+                          <span className="text-gray-700 dark:text-gray-300 font-medium">
+                            {costCenterMap.get(profilePreset.defaultCostCenterId)!.code} — {costCenterMap.get(profilePreset.defaultCostCenterId)!.name}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Prices + UOM */}

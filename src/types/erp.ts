@@ -19,14 +19,19 @@ export interface ProductProfile {
   code: string;
   name: string;
   description: string;
-  itemType: 'stock' | 'service';
-  unitOfMeasure: string;
   salesVatCodeId: number | null;
   purchaseVatCodeId: number | null;
-  defaultWarehouseId: number | null;
-  defaultSalesPrice: number;
-  defaultPurchasePrice: number;
-  reorderPoint: number;
+  salesAccountId: number | null;
+  purchaseAccountId: number | null;
+  inventoryAccountId: number | null;
+  cogsAccountId: number | null;
+  arAccountId: number | null;
+  apAccountId: number | null;
+  vatOutputAccountId: number | null;
+  vatInputAccountId: number | null;
+  cashAccountId: number | null;
+  discountAccountId: number | null;
+  defaultCostCenterId: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -193,29 +198,6 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
   version: number;
-}
-
-export interface ProductProfile {
-  id: number;
-  code: string;
-  name: string;
-  description: string;
-  itemType: ItemType;
-  unitOfMeasure: string;
-  salesVatCodeId: number | null;
-  purchaseVatCodeId: number | null;
-  defaultWarehouseId: number | null;
-  defaultSalesPrice: number;
-  defaultPurchasePrice: number;
-  reorderPoint: number;
-  salesAccountId: number | null;
-  purchaseAccountId: number | null;
-  inventoryAccountId: number | null;
-  cogsAccountId: number | null;
-  defaultCostCenterId: number | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface ProductWarehouseStock {

@@ -1,25 +1,33 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, Edit3, Trash2, AlertTriangle, Loader2, Package } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Plus, Edit3, Trash2, AlertTriangle, Loader2, Package, Link2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import Button from '@/components/ui/button/Button';
 import { useToast } from '@/components/ui/toast/ToastProvider';
 import { formatDate } from '@/lib/formatters';
+import SearchSelect from '@/components/form/SearchSelect';
+import { buildAccountHierarchyOptions } from '@/lib/accountTree';
+import type { Account, CostCenter, TaxCode } from '@/types/erp';
 
 interface ProductProfile {
   id: number;
   code: string;
   name: string;
   description: string;
-  itemType: string;
-  unitOfMeasure: string;
   salesVatCodeId: number | null;
   purchaseVatCodeId: number | null;
-  defaultWarehouseId: number | null;
-  defaultSalesPrice: number;
-  defaultPurchasePrice: number;
-  reorderPoint: number;
+  salesAccountId: number | null;
+  purchaseAccountId: number | null;
+  inventoryAccountId: number | null;
+  cogsAccountId: number | null;
+  arAccountId: number | null;
+  apAccountId: number | null;
+  vatOutputAccountId: number | null;
+  vatInputAccountId: number | null;
+  cashAccountId: number | null;
+  discountAccountId: number | null;
+  defaultCostCenterId: number | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -28,21 +36,68 @@ interface ProfileFormData {
   code: string;
   name: string;
   description: string;
-  itemType: 'stock' | 'service';
-  unitOfMeasure: string;
   salesVatCodeId: number | null;
   purchaseVatCodeId: number | null;
-  defaultWarehouseId: number | null;
-  defaultSalesPrice: number;
-  defaultPurchasePrice: number;
-  reorderPoint: number;
+  salesAccountId: number | null;
+  purchaseAccountId: number | null;
+  inventoryAccountId: number | null;
+  cogsAccountId: number | null;
+  arAccountId: number | null;
+  apAccountId: number | null;
+  vatOutputAccountId: number | null;
+  vatInputAccountId: number | null;
+  cashAccountId: number | null;
+  discountAccountId: number | null;
+  defaultCostCenterId: number | null;
 }
 
+const ACCOUNT_FIELDS: Array<{ key: keyof ProfileFormData; label: string }> = [
+  { key: 'salesAccountId', label: 'Sales Account' },
+  { key: 'purchaseAccountId', label: 'Purchase Account' },
+  { key: 'inventoryAccountId', label: 'Inventory Account' },
+  { key: 'cogsAccountId', label: 'COGS Account' },
+  { key: 'arAccountId', label: 'Accounts Receivable (AR)' },
+  { key: 'apAccountId', label: 'Accounts Payable (AP)' },
+  { key: 'vatOutputAccountId', label: 'VAT Output (Sales)' },
+  { key: 'vatInputAccountId', label: 'VAT Input (Purchase)' },
+  { key: 'cashAccountId', label: 'Cash Account' },
+  { key: 'discountAccountId', label: 'Discount Account' },
+];
+
 const emptyForm = (): ProfileFormData => ({
-  code: '', name: '', description: '', itemType: 'stock', unitOfMeasure: 'pcs',
-  salesVatCodeId: null, purchaseVatCodeId: null, defaultWarehouseId: null,
-  defaultSalesPrice: 0, defaultPurchasePrice: 0, reorderPoint: 0,
+  code: '', name: '', description: '',
+  salesVatCodeId: null, purchaseVatCodeId: null,
+  salesAccountId: null, purchaseAccountId: null, inventoryAccountId: null, cogsAccountId: null,
+  arAccountId: null, apAccountId: null, vatOutputAccountId: null, vatInputAccountId: null,
+  cashAccountId: null, discountAccountId: null, defaultCostCenterId: null,
 });
+
+/** Renders the linked-dimension hint under an account select (entry-page pattern). */
+function AccountLinkHint({ account }: { account: Account | undefined }) {
+  if (!account) return null;
+  const lt = account.linkType ?? (account.costCenterId ? 'cost_center' : null);
+  if (account.linkType === 'partner') {
+    return (
+      <p className="mt-1.5 text-xs font-medium text-blue-600 dark:text-blue-400">Requires partner — AR/AP account</p>
+    );
+  }
+  if (!lt) return <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">No linked dimension</p>;
+  if (lt === 'cost_center') {
+    return (
+      <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400">
+        <Link2 className="w-3.5 h-3.5" /> Linked to Cost Center {account.costCenterId ? `#${account.costCenterId}` : ''}
+      </p>
+    );
+  }
+  if (lt === 'employee') {
+    return (
+      <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-400">
+        <Link2 className="w-3.5 h-3.5" /> Linked to Employees
+      </p>
+    );
+  }
+  return null;
+}
 
 export default function ProductProfilesPage() {
   const toast = useToast();
@@ -54,6 +109,10 @@ export default function ProductProfilesPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProductProfile | null>(null);
 
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
+
   const fetchProfiles = async () => {
     setLoading(true);
     try {
@@ -64,16 +123,68 @@ export default function ProductProfilesPage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchProfiles(); }, []);
+  const fetchRefData = useCallback(async () => {
+    try {
+      const [aRes, ccRes, tRes] = await Promise.all([
+        fetch('/api/accounts'), fetch('/api/cost-centers'), fetch('/api/tax-codes'),
+      ]);
+      const a = await aRes.json();
+      const cc = await ccRes.json();
+      const t = await tRes.json();
+      if (a.success) setAccounts(a.data);
+      if (cc.success) setCostCenters(cc.data);
+      if (t.success) setTaxCodes(t.data);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchProfiles(); fetchRefData(); }, [fetchRefData]);
+
+  const accountOptions = useMemo(() => buildAccountHierarchyOptions(
+    accounts,
+    a => `${a.code} — ${a.name} (${a.type})${!a.isActive ? ' (inactive)' : ''}`,
+  ), [accounts]);
+
+  const accountMap = useMemo(() => {
+    const map = new Map<string, Account>();
+    for (const a of accounts) map.set(a.code, a);
+    return map;
+  }, [accounts]);
+
+  const accountIdToCode = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const a of accounts) map.set(a.id, a.code);
+    return map;
+  }, [accounts]);
+
+  const costCenterOptions = useMemo(() => costCenters
+    .filter(c => c.isActive)
+    .map(c => ({ id: c.id, label: `${c.code} — ${c.name}` })),
+  [costCenters]);
+
+  const taxTypeOptions = useMemo(() => {
+    const groups = taxCodes.filter(t => t.isGroup);
+    return taxCodes
+      .filter(t => t.isActive && !t.isGroup)
+      .map(t => ({
+        id: t.id,
+        label: `${t.code} — ${t.name} (${t.rate}%)`,
+        groupId: t.parentId,
+        groupLabel: groups.find(g => g.id === t.parentId)?.name || 'Other',
+      }));
+  }, [taxCodes]);
 
   const openAdd = () => { setEditing(null); setFormData(emptyForm()); setShowForm(true); };
   const openEdit = (p: ProductProfile) => {
     setEditing(p);
     setFormData({
-      code: p.code, name: p.name, description: p.description, itemType: p.itemType as 'stock' | 'service',
-      unitOfMeasure: p.unitOfMeasure, salesVatCodeId: p.salesVatCodeId, purchaseVatCodeId: p.purchaseVatCodeId,
-      defaultWarehouseId: p.defaultWarehouseId, defaultSalesPrice: p.defaultSalesPrice,
-      defaultPurchasePrice: p.defaultPurchasePrice, reorderPoint: p.reorderPoint,
+      code: p.code, name: p.name, description: p.description,
+      salesVatCodeId: p.salesVatCodeId, purchaseVatCodeId: p.purchaseVatCodeId,
+      salesAccountId: p.salesAccountId, purchaseAccountId: p.purchaseAccountId,
+      inventoryAccountId: p.inventoryAccountId, cogsAccountId: p.cogsAccountId,
+      arAccountId: p.arAccountId, apAccountId: p.apAccountId,
+      vatOutputAccountId: p.vatOutputAccountId, vatInputAccountId: p.vatInputAccountId,
+      cashAccountId: p.cashAccountId, discountAccountId: p.discountAccountId,
+      defaultCostCenterId: p.defaultCostCenterId,
     });
     setShowForm(true);
   };
@@ -120,7 +231,7 @@ export default function ProductProfilesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Product Profiles</h1>
-          <p className="text-sm text-gray-500 mt-1">Create templates to speed up product creation</p>
+          <p className="text-sm text-gray-500 mt-1">Profiles carry the posting accounts used when invoicing</p>
         </div>
         <Button onClick={openAdd} className="flex items-center gap-2">
           <Plus className="w-4 h-4" /> Add Profile
@@ -143,15 +254,19 @@ export default function ProductProfilesPage() {
                   <span className="text-xs font-mono text-gray-400">{p.code}</span>
                   <h3 className="font-semibold text-gray-900 dark:text-white mt-1">{p.name}</h3>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${p.itemType === 'stock' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                  {p.itemType}
-                </span>
               </div>
               {p.description && <p className="text-sm text-gray-500 mt-2">{p.description}</p>}
               <div className="mt-4 text-xs text-gray-400 space-y-1">
-                <div>Unit: {p.unitOfMeasure}</div>
-                {p.defaultWarehouseId && <div>Warehouse: #{p.defaultWarehouseId}</div>}
-                {p.reorderPoint > 0 && <div>Reorder at: {p.reorderPoint}</div>}
+                <div>Accounts: {ACCOUNT_FIELDS.filter(f => p[f.key as keyof ProductProfile]).length} / {ACCOUNT_FIELDS.length}</div>
+                {p.defaultCostCenterId && <div>Default Cost Center: #{p.defaultCostCenterId}</div>}
+              </div>
+              <div className="mt-4 text-[11px] text-gray-500 space-y-0.5">
+                {ACCOUNT_FIELDS.slice(0, 4).map(f => {
+                  const code = p[f.key as keyof ProductProfile] != null ? accountIdToCode.get(p[f.key as keyof ProductProfile] as number) : null;
+                  return code ? (
+                    <div key={f.key as string}><span className="text-gray-400">{f.label}:</span> {code}</div>
+                  ) : null;
+                })}
               </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button onClick={() => openEdit(p)} className="p-1.5 text-gray-400 hover:text-brand-500"><Edit3 className="w-4 h-4" /></button>
@@ -163,9 +278,9 @@ export default function ProductProfilesPage() {
       )}
 
       {/* Add/Edit Modal */}
-      <Modal isOpen={showForm} onClose={() => setShowForm(false)} className="max-w-lg p-6">
+      <Modal isOpen={showForm} onClose={() => setShowForm(false)} className="max-w-2xl p-6">
         <h2 className="text-lg font-semibold mb-4">{editing ? 'Edit Profile' : 'New Profile'}</h2>
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1 custom-scrollbar">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Code *</label>
@@ -183,26 +298,70 @@ export default function ProductProfilesPage() {
             <textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })}
               className="w-full rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white" rows={2} />
           </div>
+
+          {/* Account selectors — entry-page pattern */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Item Type</label>
-              <select value={formData.itemType} onChange={e => setFormData({ ...formData, itemType: e.target.value as any })}
-                className="w-full rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white">
-                <option value="stock">Stock</option>
-                <option value="service">Service</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Unit</label>
-              <input value={formData.unitOfMeasure} onChange={e => setFormData({ ...formData, unitOfMeasure: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white" placeholder="pcs" />
-            </div>
+            {ACCOUNT_FIELDS.map(f => {
+              const code = formData[f.key] != null ? accountIdToCode.get(formData[f.key] as number) : undefined;
+              const account = code ? accountMap.get(code) : undefined;
+              return (
+                <div key={f.key as string}>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{f.label}</label>
+                  <SearchSelect
+                    options={accountOptions}
+                    value={code || ''}
+                    onChange={(val) => {
+                      const chosen = val ? accountMap.get(String(val)) : undefined;
+                      setFormData(prev => ({ ...prev, [f.key]: chosen ? chosen.id : null } as ProfileFormData));
+                    }}
+                    placeholder="Select account..."
+                    searchPlaceholder="Search accounts..."
+                    notFoundLabel="No accounts found"
+                    noneLabel="None"
+                  />
+                  <AccountLinkHint account={account} />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Cost center + VAT types */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Default Cost Center (auto entries)</label>
+            <SearchSelect
+              options={costCenterOptions}
+              value={formData.defaultCostCenterId}
+              onChange={(val) => setFormData({ ...formData, defaultCostCenterId: val ? Number(val) : null })}
+              placeholder="Select cost center..."
+              noneLabel="None"
+              searchPlaceholder="Search cost centers..."
+              notFoundLabel="No cost centers found"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Reorder Point</label>
-              <input type="number" value={formData.reorderPoint} onChange={e => setFormData({ ...formData, reorderPoint: Number(e.target.value) })}
-                className="w-full rounded-lg border px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Sales VAT Type</label>
+              <SearchSelect
+                options={taxTypeOptions}
+                value={formData.salesVatCodeId}
+                onChange={(val) => setFormData({ ...formData, salesVatCodeId: val ? Number(val) : null })}
+                placeholder="Select tax..."
+                noneLabel="None"
+                searchPlaceholder="Search taxes..."
+                notFoundLabel="No taxes found"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Purchase VAT Type</label>
+              <SearchSelect
+                options={taxTypeOptions}
+                value={formData.purchaseVatCodeId}
+                onChange={(val) => setFormData({ ...formData, purchaseVatCodeId: val ? Number(val) : null })}
+                placeholder="Select tax..."
+                noneLabel="None"
+                searchPlaceholder="Search taxes..."
+                notFoundLabel="No taxes found"
+              />
             </div>
           </div>
         </div>

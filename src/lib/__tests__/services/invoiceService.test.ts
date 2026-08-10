@@ -3,6 +3,7 @@ import { setupTestDatabase, teardownTestDatabase, seedTestData } from '../test-h
 import { invoiceService } from '../../services/invoiceService';
 import { invoiceRepository } from '../../repositories/invoiceRepository';
 import { entryRepository } from '../../repositories/entryRepository';
+import { productProfileRepository } from '../../repositories/productProfileRepository';
 import { inventoryRepository } from '../../repositories/inventoryRepository';
 import { BusinessRuleError, NotFoundError } from '../../utils/errors';
 import { db } from '../../db';
@@ -326,6 +327,42 @@ describe('invoiceService', () => {
       ).get(entries[0].id, data.taxCodeId) as any;
       expect(vatLine).toBeDefined();
       expect(vatLine.vatAmount).toBeGreaterThan(0);
+    });
+  });
+
+  describe('posting accounts from product profile', () => {
+    function accountIdByCode(code: string): number {
+      return (db.prepare('SELECT id FROM account WHERE code = ?').get(code) as any).id;
+    }
+
+    it('should resolve posting accounts from the product profile (single source of truth)', () => {
+      // Assign a profile carrying custom accounts to the widget product.
+      const profileId = productProfileRepository.create({
+        code: 'POST-STD',
+        name: 'Posting Standard',
+        salesAccountId: accountIdByCode('401'),
+        purchaseAccountId: accountIdByCode('503'),
+        inventoryAccountId: accountIdByCode('103'),
+        cogsAccountId: accountIdByCode('501'),
+        arAccountId: accountIdByCode('102'),
+        apAccountId: accountIdByCode('201'),
+        vatOutputAccountId: accountIdByCode('202'),
+        vatInputAccountId: accountIdByCode('105'),
+        defaultCostCenterId: null,
+      });
+      db.prepare('UPDATE product SET profileId = ? WHERE id = ?').run(profileId, data.productIds.widget);
+
+      const id = createDraftInvoice('sales');
+      const preview = invoiceService.previewPosting(id);
+
+      // Revenue uses the profile salesAccountId (401), not the old posting_profile.
+      const revenueEntry = preview.entries.find((e: any) => !e.accountCode.startsWith('VAT') && !e.accountCode.startsWith('COGS') && !e.accountCode.startsWith('Inventory') && e.creditAmount > 0 && e.accountCode !== '102');
+      expect(revenueEntry).toBeDefined();
+      expect(revenueEntry.accountCode).toBe('401');
+      // Receivable uses the profile AR account.
+      const arEntry = preview.entries.find((e: any) => e.accountCode === '102');
+      expect(arEntry).toBeDefined();
+      expect(arEntry.debitAmount).toBeGreaterThan(0);
     });
   });
 });

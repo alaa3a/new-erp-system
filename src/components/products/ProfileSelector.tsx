@@ -8,14 +8,19 @@ interface Profile {
   code: string;
   name: string;
   description: string;
-  itemType: string;
-  unitOfMeasure: string;
   salesVatCodeId: number | null;
   purchaseVatCodeId: number | null;
-  defaultWarehouseId: number | null;
-  defaultSalesPrice: number;
-  defaultPurchasePrice: number;
-  reorderPoint: number;
+  salesAccountId: number | null;
+  purchaseAccountId: number | null;
+  inventoryAccountId: number | null;
+  cogsAccountId: number | null;
+  arAccountId: number | null;
+  apAccountId: number | null;
+  vatOutputAccountId: number | null;
+  vatInputAccountId: number | null;
+  cashAccountId: number | null;
+  discountAccountId: number | null;
+  defaultCostCenterId: number | null;
 }
 
 interface ProfileSelectorProps {
@@ -48,14 +53,19 @@ export function ProfileSelector({ value, onChange, className = '' }: ProfileSele
       if (data.success) {
         const p = data.data;
         onChange(profileId, {
-          itemType: p.itemType,
-          unitOfMeasure: p.unitOfMeasure,
           salesVatCodeId: p.salesVatCodeId,
           purchaseVatCodeId: p.purchaseVatCodeId,
-          defaultWarehouseId: p.defaultWarehouseId,
-          defaultSalesPrice: p.defaultSalesPrice,
-          defaultPurchasePrice: p.defaultPurchasePrice,
-          reorderPoint: p.reorderPoint,
+          salesAccountId: p.salesAccountId,
+          purchaseAccountId: p.purchaseAccountId,
+          inventoryAccountId: p.inventoryAccountId,
+          cogsAccountId: p.cogsAccountId,
+          arAccountId: p.arAccountId,
+          apAccountId: p.apAccountId,
+          vatOutputAccountId: p.vatOutputAccountId,
+          vatInputAccountId: p.vatInputAccountId,
+          cashAccountId: p.cashAccountId,
+          discountAccountId: p.discountAccountId,
+          defaultCostCenterId: p.defaultCostCenterId,
         });
       }
     }
