@@ -366,18 +366,6 @@ function initDb() {
       FOREIGN KEY(parentId) REFERENCES product(id) ON DELETE SET NULL
     );
 
-    CREATE TABLE IF NOT EXISTS product_category (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      code TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL,
-      description TEXT,
-      isActive INTEGER NOT NULL DEFAULT 1,
-      parentId INTEGER REFERENCES product_category(id) ON DELETE SET NULL,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL,
-      version INTEGER NOT NULL DEFAULT 1
-    );
-
     CREATE TABLE IF NOT EXISTS product_profile (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       code TEXT UNIQUE NOT NULL,
@@ -834,36 +822,60 @@ function initDb() {
   // Migration: product categories (parent-child hierarchy)
   try { db.exec('ALTER TABLE product ADD COLUMN parentId INTEGER REFERENCES product(id) ON DELETE SET NULL'); } catch { /* column may already exist */ }
   try { db.exec('ALTER TABLE product ADD COLUMN isCategory INTEGER NOT NULL DEFAULT 0'); } catch { /* column may already exist */ }
-  // Migration: separate product_category table (Phase 0)
+  // Migration: retire product_category — categories become product group nodes
+  // (isCategory=1). Each category is copied into the product table as a group,
+  // products are re-parented through product.parentId, and both the legacy
+  // categoryId column and the category table are removed. Idempotent: group
+  // rows are keyed by their (unique) category code, and the whole block skips
+  // once the table is gone (so fresh/upgraded DBs pay nothing on later boots).
   try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS product_category (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        code TEXT NOT NULL UNIQUE,
-        name TEXT NOT NULL,
-        description TEXT,
-        isActive INTEGER NOT NULL DEFAULT 1,
-        parentId INTEGER REFERENCES product_category(id) ON DELETE SET NULL,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        version INTEGER NOT NULL DEFAULT 1
-      )
-    `);
-  } catch { /* table may already exist */ }
-  // Migration: add categoryId to product table
-  try { db.exec('ALTER TABLE product ADD COLUMN categoryId INTEGER REFERENCES product_category(id)'); } catch { /* column may already exist */ }
-  // Migration: backfill product_category from existing product categories
-  try {
-    const existingCats = db.prepare("SELECT id, code, name, description, isActive, parentId, createdAt, updatedAt, version FROM product WHERE isCategory = 1 AND deletedAt IS NULL").all() as any[];
-    if (existingCats.length > 0) {
-      const insertCat = db.prepare('INSERT OR IGNORE INTO product_category (id, code, name, description, isActive, parentId, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      const updateProduct = db.prepare('UPDATE product SET categoryId = ? WHERE parentId = ? AND isCategory = 0');
-      for (const cat of existingCats) {
-        insertCat.run(cat.id, cat.code, cat.name, cat.description, cat.isActive, cat.parentId, cat.createdAt, cat.updatedAt, cat.version);
-        updateProduct.run(cat.id, cat.id);
+    const catTable = db.prepare("SELECT count(1) AS c FROM sqlite_master WHERE type='table' AND name='product_category'").get() as any;
+    if ((catTable?.c ?? 0) > 0) {
+      const catCount = db.prepare('SELECT count(1) AS c FROM product_category').get() as any;
+      if ((catCount?.c ?? 0) > 0) {
+        // Ensure the legacy column exists so products can be mapped to their old
+        // category (already present on pre-upgrade databases; no-op otherwise).
+        try { db.exec('ALTER TABLE product ADD COLUMN categoryId INTEGER REFERENCES product_category(id)'); } catch { /* column may already exist */ }
+        const cats = db.prepare('SELECT id, code, name, description, isActive, parentId FROM product_category').all() as any[];
+        const now = new Date().toISOString();
+        const groupIdByCatId = new Map<number, number>();
+        const insertGroup = db.prepare(`
+          INSERT INTO product (code, name, description, itemType, unitOfMeasure, salesPrice, purchasePrice, reorderPoint, isActive, parentId, isCategory, createdAt, updatedAt, version)
+          SELECT ?, ?, ?, 'stock', 'pcs', 0, 0, 0, ?, NULL, 1, ?, ?, 1
+          WHERE NOT EXISTS (SELECT 1 FROM product WHERE code = ?)
+        `);
+        for (const c of cats) {
+          insertGroup.run(c.code, c.name, c.description || '', c.isActive !== false ? 1 : 0, now, now, c.code);
+          const row = db.prepare('SELECT id FROM product WHERE code = ? AND isCategory = 1').get(c.code) as any;
+          if (row) groupIdByCatId.set(c.id, row.id);
+        }
+        // Preserve category nesting (category parentId -> product parentId)
+        for (const c of cats) {
+          const groupId = groupIdByCatId.get(c.id);
+          const parentGroupId = c.parentId ? groupIdByCatId.get(c.parentId) : undefined;
+          if (groupId && parentGroupId) {
+            db.prepare('UPDATE product SET parentId = ? WHERE id = ?').run(parentGroupId, groupId);
+          }
+        }
+        // Re-parent products that were linked to a category
+        for (const c of cats) {
+          const groupId = groupIdByCatId.get(c.id);
+          if (!groupId) continue;
+          db.prepare('UPDATE product SET parentId = ? WHERE categoryId = ? AND isCategory = 0').run(groupId, c.id);
+        }
+        // Sever row-level references before removing the column
+        db.prepare('UPDATE product SET categoryId = NULL WHERE categoryId IS NOT NULL').run();
+      }
+      // Remove the legacy FK column BEFORE the table: if the column outlived its
+      // parent table, every product insert would fail the FK check (foreign_keys
+      // = ON) with "no such table: product_category".
+      try { db.exec('ALTER TABLE product DROP COLUMN categoryId'); } catch { /* column may already be gone */ }
+      const hasCategoryColumn = (db.prepare("SELECT count(1) AS c FROM pragma_table_info('product') WHERE name = 'categoryId'").get() as any)?.c > 0;
+      if (!hasCategoryColumn) {
+        db.exec('DROP TABLE IF EXISTS product_category');
       }
     }
-  } catch { /* ignore — backfill is best-effort */ }
+  } catch { /* ignore — migration is best-effort */ }
   try { db.exec('ALTER TABLE business_partner ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   try { db.exec('ALTER TABLE account ADD COLUMN deletedAt TEXT'); } catch { /* column may already exist */ }
   // Migration: fix child accounts incorrectly marked as system accounts
@@ -1205,18 +1217,18 @@ function seedInitialData() {
   // create their own tax groups and types (avoids a protected system "VAT"
   // group that cannot be deleted from the UI).
 
-  // Seed product categories (parent-child hierarchy) — now in separate product_category table
-  const catCount = db.prepare('SELECT count(1) AS count FROM product_category').get<{ count: number }>()?.count ?? 0;
-  if (catCount === 0) {
+  // Seed product groups (hierarchy folder nodes) so a fresh database starts with a tree
+  const groupCount = db.prepare('SELECT count(1) AS count FROM product WHERE isCategory = 1 AND deletedAt IS NULL').get<{ count: number }>()?.count ?? 0;
+  if (groupCount === 0) {
     const now = new Date().toISOString();
-    const categories: [string, string][] = [
+    const groups: [string, string][] = [
       ['CAT-ELEC', 'Electronics'],
       ['CAT-CLOTH', 'Clothing'],
       ['CAT-SERV', 'Services'],
     ];
-    const catStmt = db.prepare('INSERT INTO product_category (code, name, description, isActive, parentId, createdAt, updatedAt, version) VALUES (?, ?, ?, 1, NULL, ?, ?, 1)');
-    for (const [code, name] of categories) {
-      catStmt.run(code, name, '', now, now);
+    const groupStmt = db.prepare("INSERT INTO product (code, name, description, itemType, unitOfMeasure, salesPrice, purchasePrice, reorderPoint, isActive, parentId, isCategory, createdAt, updatedAt, version) VALUES (?, ?, ?, 'stock', 'pcs', 0, 0, 0, 1, NULL, 1, ?, ?, 1)");
+    for (const [code, name] of groups) {
+      groupStmt.run(code, name, '', now, now);
     }
   }
 }

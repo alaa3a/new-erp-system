@@ -25,7 +25,8 @@ describe('productRepository', () => {
         defaultWarehouseId: null,
         reorderPoint: 0,
         isActive: true,
-        categoryId: null,
+        parentId: null,
+        isCategory: false,
         profileId: null,
       });
       expect(id).toBeGreaterThan(0);
@@ -51,7 +52,8 @@ describe('productRepository', () => {
         defaultWarehouseId: null,
         reorderPoint: 0,
         isActive: true,
-        categoryId: null,
+        parentId: null,
+        isCategory: false,
         profileId: null,
       });
       expect(id).toBeGreaterThan(0);
@@ -98,6 +100,31 @@ describe('productRepository', () => {
       expect(updated.name).toBe('Widget Pro Deluxe');
       expect(updated.salesPrice).toBe(3999);
       expect(updated.version).toBe(before.version + 1);
+    });
+
+    it('should only change the provided fields on partial update (toggle-active safe)', () => {
+      const id = productRepository.create({
+        name: 'Partial Update Item', description: 'desc', itemType: 'stock', unitOfMeasure: 'kg',
+        salesPrice: 1234, purchasePrice: 567, vatCodeId: null, purchaseVatCodeId: null,
+        defaultWarehouseId: null, reorderPoint: 7, isActive: true, parentId: null, isCategory: false, profileId: null,
+      });
+      const before = productRepository.findById(id)!;
+      const ok = productRepository.update(id, { isActive: false }, before.version);
+      expect(ok).toBe(true);
+      const after = productRepository.findById(id)!;
+      expect(after.isActive).toBe(false);
+      expect(after.name).toBe(before.name);
+      expect(after.description).toBe('desc');
+      expect(after.unitOfMeasure).toBe('kg');
+      expect(after.salesPrice).toBe(1234);
+      expect(after.purchasePrice).toBe(567);
+      expect(after.reorderPoint).toBe(7);
+      expect(after.code).toBe(before.code);
+
+      // code changes persist too
+      const ok2 = productRepository.update(id, { code: 'PART-001' }, after.version);
+      expect(ok2).toBe(true);
+      expect(productRepository.findById(id)!.code).toBe('PART-001');
     });
   });
 

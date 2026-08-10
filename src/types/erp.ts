@@ -171,18 +171,6 @@ export interface Warehouse {
   version: number;
 }
 
-export interface ProductCategory {
-  id: number;
-  code: string;
-  name: string;
-  description: string;
-  isActive: boolean;
-  parentId: number | null;
-  createdAt: string;
-  updatedAt: string;
-  version: number;
-}
-
 export interface Product {
   id: number;
   code: string;
@@ -197,7 +185,10 @@ export interface Product {
   defaultWarehouseId: number | null;
   reorderPoint: number;
   isActive: boolean;
-  categoryId: number | null;
+  /** Parent node in the product hierarchy (chart-of-accounts style). Only group nodes (isCategory=true) can be parents. */
+  parentId: number | null;
+  /** Group (folder) node — a container, not a sellable item. */
+  isCategory: boolean;
   profileId: number | null;
   createdAt: string;
   updatedAt: string;
