@@ -257,14 +257,14 @@ function PurchasePageContent() {
         fetch('/api/posting-profiles'),
         fetch('/api/warehouses'),
       ])
-      if (pRes.ok) setPartners(await pRes.json())
-      if (prodRes.ok) setProducts(await prodRes.json())
-      if (taxRes.ok) setTaxCodes(await taxRes.json())
+      if (pRes.ok) { const json = await pRes.json(); if (json.success) setPartners(json.data) }
+      if (prodRes.ok) { const json = await prodRes.json(); if (json.success) setProducts(json.data) }
+      if (taxRes.ok) { const json = await taxRes.json(); if (json.success) setTaxCodes(json.data) }
       if (ppRes.ok) {
-        const all = await ppRes.json()
-        setPostingProfiles(all.filter((p: PostingProfile) => p.invoiceType === 'purchase'))
+        const json = await ppRes.json()
+        setPostingProfiles((json.data || []).filter((p: PostingProfile) => p.invoiceType === 'purchase'))
       }
-      if (whRes.ok) setWarehouses(await whRes.json())
+      if (whRes.ok) { const json = await whRes.json(); if (json.success) setWarehouses(json.data) }
     } catch (err) {
       console.error('Failed to fetch reference data:', err)
     }

@@ -195,7 +195,7 @@ export default function DebitNotePage() {
 
   const fetchNotes = useCallback(async () => {
     setLoading(true)
-    try { const r = await fetch('/api/invoices?type=debit_note'); if (r.ok) setNotes(await r.json()) } catch {}
+    try { const r = await fetch('/api/invoices?type=debit_note'); if (r.ok) { const json = await r.json(); if (json.success) setNotes(json.data) } } catch {}
     finally { setLoading(false) }
   }, [])
 
@@ -205,12 +205,12 @@ export default function DebitNotePage() {
         fetch('/api/invoices?type=purchase&status=posted'), fetch('/api/products'),
         fetch('/api/tax-codes'), fetch('/api/posting-profiles'), fetch('/api/warehouses'), fetch('/api/partners'),
       ])
-      if (piR.ok) setPurchaseInvoices(await piR.json())
-      if (prR.ok) setProducts(await prR.json())
-      if (txR.ok) setTaxCodes(await txR.json())
-      if (ppR.ok) { const all = await ppR.json(); setPostingProfiles(all.filter((p: any) => p.invoiceType === 'sales')) }
-      if (whR.ok) setWarehouses(await whR.json())
-      if (pR.ok) setPartners(await pR.json())
+      if (piR.ok) { const json = await piR.json(); if (json.success) setPurchaseInvoices(json.data) }
+      if (prR.ok) { const json = await prR.json(); if (json.success) setProducts(json.data) }
+      if (txR.ok) { const json = await txR.json(); if (json.success) setTaxCodes(json.data) }
+      if (ppR.ok) { const json = await ppR.json(); setPostingProfiles((json.data || []).filter((p: any) => p.invoiceType === 'sales')) }
+      if (whR.ok) { const json = await whR.json(); if (json.success) setWarehouses(json.data) }
+      if (pR.ok) { const json = await pR.json(); if (json.success) setPartners(json.data) }
     } catch {}
   }, [])
 
@@ -296,7 +296,7 @@ export default function DebitNotePage() {
 
   const openPreview = async (n: Invoice) => {
     setPreviewNote(n); setPreviewData(null); setPreviewLoading(true)
-    try { const r = await fetch(`/api/invoices/${n.id}/preview`, { method: 'POST' }); if (r.ok) setPreviewData(await r.json()) } catch {} finally { setPreviewLoading(false) }
+    try { const r = await fetch(`/api/invoices/${n.id}/preview`, { method: 'POST' }); if (r.ok) { const json = await r.json(); if (json.success) setPreviewData(json.data) } } catch {} finally { setPreviewLoading(false) }
   }
 
   const handlePost = async () => {
