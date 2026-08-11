@@ -2,7 +2,7 @@ import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import path from 'path';
 import { hashPassword } from '@/lib/auth/password';
-import { ValidationError } from '@/lib/utils/errors';
+import { ValidationError, ConflictError } from '@/lib/utils/errors';
 
 const DB_PATH = process.env.DATABASE_PATH || 'erp.sqlite';
 
@@ -45,6 +45,35 @@ function sanitizeParams(params: unknown[]): unknown[] {
   return params.map(p => p === undefined ? null : p);
 }
 
+/** Human-friendly labels for tables that can raise UNIQUE-constraint conflicts. */
+const ENTITY_LABELS: Record<string, string> = {
+  product: 'product',
+  account: 'account',
+  business_partner: 'business partner',
+  users: 'user',
+  employee: 'employee',
+  tax_code: 'tax code',
+  product_profile: 'product profile',
+  cost_center: 'cost center',
+  warehouse: 'warehouse',
+  document_sequence: 'document sequence',
+};
+
+/**
+ * sql.js surfaces UNIQUE violations as a raw Error("UNIQUE constraint failed:
+ * <table>.<column>"). Pre-checks that ignore soft-deleted rows can race the
+ * UNIQUE constraint, so the DB layer is the last line of defense: turn these
+ * into a clean 409 ConflictError instead of a 500 (duplicate create-group /
+ * create-product codes were crashing with "Internal server error").
+ */
+function uniqueViolationMessage(raw: string): string {
+  const cols = raw.replace(/^.*?UNIQUE constraint failed:\s*/, '').split(',').map((c) => c.trim());
+  const [table, field] = (cols[0] ?? '').split('.');
+  const entity = (table && ENTITY_LABELS[table]) || table?.replace(/_/g, ' ') || 'record';
+  const label = field === 'email' ? 'email address' : field || 'value';
+  return `A ${entity} with this ${label} already exists. Deleted records keep their unique ${label} reserved.`;
+}
+
 class Statement {
   private sql: string;
   private params: unknown[];
@@ -82,7 +111,15 @@ class Statement {
   run(...bindParams: unknown[]): { changes: number; lastInsertRowid: number } {
     const db = ensureSync();
     const params = sanitizeParams(bindParams.length > 0 ? bindParams : this.params);
-    db.run(this.sql, params);
+    try {
+      db.run(this.sql, params);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('UNIQUE constraint failed')) {
+        throw new ConflictError(uniqueViolationMessage(message));
+      }
+      throw err;
+    }
     const changes = db.getRowsModified();
     const lastId = db.exec('SELECT last_insert_rowid() AS id');
     const lastInsertRowid = lastId.length > 0 ? lastId[0].values[0][0] as number : 0;
