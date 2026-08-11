@@ -666,6 +666,10 @@ export default function ChartOfAccountsPage() {
             )
           })()}
         </td>
+        {/* Used In */}
+        <td className="py-2 px-3">
+          <UsageCell usage={usageMap[account.code]} />
+        </td>
         {/* Type */}
         <td className="py-2 px-3">
           <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${typeConfig[account.type].bg} ${typeConfig[account.type].text}`}>
@@ -682,10 +686,6 @@ export default function ChartOfAccountsPage() {
           }`}>
             {account.isActive ? 'Active' : 'Inactive'}
           </span>
-        </td>
-        {/* Used In */}
-        <td className="py-2 px-3">
-          <UsageCell usage={usageMap[account.code]} />
         </td>
         {/* Actions */}
         <td className="py-2 px-3 text-right">
@@ -810,9 +810,9 @@ export default function ChartOfAccountsPage() {
                 <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</th>
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Linked To</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Used In</th>
                   <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
                   <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Status</th>
-                  <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Used In</th>
                   <th className="text-right py-3 px-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>

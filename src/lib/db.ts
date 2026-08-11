@@ -2,7 +2,7 @@ import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import path from 'path';
 import { hashPassword } from '@/lib/auth/password';
-import { ValidationError } from '@/lib/utils/errors';
+import { ValidationError, ConflictError } from '@/lib/utils/errors';
 
 const DB_PATH = process.env.DATABASE_PATH || 'erp.sqlite';
 
@@ -45,6 +45,35 @@ function sanitizeParams(params: unknown[]): unknown[] {
   return params.map(p => p === undefined ? null : p);
 }
 
+/** Human-friendly labels for tables that can raise UNIQUE-constraint conflicts. */
+const ENTITY_LABELS: Record<string, string> = {
+  product: 'product',
+  account: 'account',
+  business_partner: 'business partner',
+  users: 'user',
+  employee: 'employee',
+  tax_code: 'tax code',
+  product_profile: 'product profile',
+  cost_center: 'cost center',
+  warehouse: 'warehouse',
+  document_sequence: 'document sequence',
+};
+
+/**
+ * sql.js surfaces UNIQUE violations as a raw Error("UNIQUE constraint failed:
+ * <table>.<column>"). Pre-checks that ignore soft-deleted rows can race the
+ * UNIQUE constraint, so the DB layer is the last line of defense: turn these
+ * into a clean 409 ConflictError instead of a 500 (duplicate create-group /
+ * create-product codes were crashing with "Internal server error").
+ */
+function uniqueViolationMessage(raw: string): string {
+  const cols = raw.replace(/^.*?UNIQUE constraint failed:\s*/, '').split(',').map((c) => c.trim());
+  const [table, field] = (cols[0] ?? '').split('.');
+  const entity = (table && ENTITY_LABELS[table]) || table?.replace(/_/g, ' ') || 'record';
+  const label = field === 'email' ? 'email address' : field || 'value';
+  return `A ${entity} with this ${label} already exists. Deleted records keep their unique ${label} reserved.`;
+}
+
 class Statement {
   private sql: string;
   private params: unknown[];
@@ -82,7 +111,15 @@ class Statement {
   run(...bindParams: unknown[]): { changes: number; lastInsertRowid: number } {
     const db = ensureSync();
     const params = sanitizeParams(bindParams.length > 0 ? bindParams : this.params);
-    db.run(this.sql, params);
+    try {
+      db.run(this.sql, params);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('UNIQUE constraint failed')) {
+        throw new ConflictError(uniqueViolationMessage(message));
+      }
+      throw err;
+    }
     const changes = db.getRowsModified();
     const lastId = db.exec('SELECT last_insert_rowid() AS id');
     const lastInsertRowid = lastId.length > 0 ? lastId[0].values[0][0] as number : 0;
@@ -999,7 +1036,7 @@ function ensureSequence(documentType: string, prefix: string, padding = 6): void
   const exists = db.prepare('SELECT id FROM document_sequence WHERE documentType = ?').get(documentType);
   if (!exists) {
     const now = new Date().toISOString();
-    db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 1, ?, ?, ?)').run(documentType, prefix, padding, now, now);
+    db.prepare('INSERT OR IGNORE INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 1, ?, ?, ?)').run(documentType, prefix, padding, now, now);
   }
 }
 
@@ -1051,7 +1088,7 @@ function seedInitialData() {
   const userCount = db.prepare('SELECT count(1) AS count FROM users').get<{ count: number }>()?.count ?? 0;
   if (userCount === 0) {
     const now = new Date().toISOString();
-    db.prepare(`INSERT INTO users (email, passwordHash, firstName, lastName, permissionIds, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1)`).run(
+    db.prepare(`INSERT OR IGNORE INTO users (email, passwordHash, firstName, lastName, permissionIds, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1)`).run(
       'admin@erp.local',
       hashPassword('admin123'),
       'Admin',
@@ -1167,7 +1204,7 @@ function seedInitialData() {
     const vatId = vat?.id || null;
     const vat2 = db.prepare('SELECT id FROM tax_code ORDER BY id LIMIT 1 OFFSET 1').get<{ id: number }>();
     const vat2Id = vat2?.id || null;
-    const pStmt = db.prepare('INSERT INTO product_profile (code, name, description, salesVatCodeId, purchaseVatCodeId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const pStmt = db.prepare('INSERT OR IGNORE INTO product_profile (code, name, description, salesVatCodeId, purchaseVatCodeId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
     const now2 = new Date().toISOString();
     pStmt.run('STD', 'Standard Product', 'Default product with standard tax', vatId, vatId, now2, now2);
     pStmt.run('EXM', 'Tax Exempt', 'Zero-rated product', null, null, now2, now2);
@@ -1203,12 +1240,12 @@ function seedInitialData() {
       ['4', 'Revenue', 'revenue', 0],
       ['5', 'Expenses', 'expense', 0],
     ];
-    const rootStmt = db.prepare('INSERT INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, NULL, ?, 1, ?, ?, 1)');
+    const rootStmt = db.prepare('INSERT OR IGNORE INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, NULL, ?, 1, ?, ?, 1)');
     for (const [code, name, type, sys] of rootAccts) {
       rootStmt.run(code, name, type, sys, now, now);
     }
     // Level 2: Child accounts — editable (isSystemAccount = 0)
-    const acctStmt = db.prepare('INSERT INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, 0, 1, ?, ?, 1)');
+    const acctStmt = db.prepare('INSERT OR IGNORE INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, 0, 1, ?, ?, 1)');
     // Under Asset(1): 101-105
     const assets: [string, string, string][] = [
       ['101', 'Cash & Bank', 'asset'],
@@ -1238,7 +1275,10 @@ function seedInitialData() {
   // create their own tax groups and types (avoids a protected system "VAT"
   // group that cannot be deleted from the UI).
 
-  // Seed product groups (hierarchy folder nodes) so a fresh database starts with a tree
+  // Seed product groups (hierarchy folder nodes) so a fresh database starts with a tree.
+  // Guard per-code: soft-deleted rows still reserve their code via the UNIQUE
+  // constraint, so a restored/used DB may already hold CAT-* codes — inserting
+  // them again would crash initialization (Internal server error on every request).
   const groupCount = db.prepare('SELECT count(1) AS count FROM product WHERE isCategory = 1 AND deletedAt IS NULL').get<{ count: number }>()?.count ?? 0;
   if (groupCount === 0) {
     const now = new Date().toISOString();
@@ -1247,7 +1287,7 @@ function seedInitialData() {
       ['CAT-CLOTH', 'Clothing'],
       ['CAT-SERV', 'Services'],
     ];
-    const groupStmt = db.prepare("INSERT INTO product (code, name, description, itemType, unitOfMeasure, salesPrice, purchasePrice, reorderPoint, isActive, parentId, isCategory, createdAt, updatedAt, version) VALUES (?, ?, ?, 'stock', 'pcs', 0, 0, 0, 1, NULL, 1, ?, ?, 1)");
+    const groupStmt = db.prepare("INSERT OR IGNORE INTO product (code, name, description, itemType, unitOfMeasure, salesPrice, purchasePrice, reorderPoint, isActive, parentId, isCategory, createdAt, updatedAt, version) VALUES (?, ?, ?, 'stock', 'pcs', 0, 0, 0, 1, NULL, 1, ?, ?, 1)");
     for (const [code, name] of groups) {
       groupStmt.run(code, name, '', now, now);
     }
@@ -1345,4 +1385,4 @@ function resetForTest(): void {
   state.inTransaction = false;
 }
 
-export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave, getDbBytes, replaceDatabase, getDbFilePath };
+export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave, getDbBytes, replaceDatabase, getDbFilePath, uniqueViolationMessage };

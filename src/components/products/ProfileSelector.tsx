@@ -71,12 +71,12 @@ export function ProfileSelector({ value, onChange, className = '' }: ProfileSele
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-white border border-gray-300 rounded-lg shadow-sm hover:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-gray-900 dark:border-gray-700"
+        className="w-full flex items-center justify-between px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:border-gray-300 dark:hover:border-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
       >
-        <span className={selected ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>
+        <span className={selected ? 'text-gray-900 dark:text-white truncate' : 'text-gray-400 dark:text-gray-500'}>
           {selected ? `${selected.code} - ${selected.name}` : 'Select a profile...'}
         </span>
-        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
       </button>
 
       {selected?.description && (

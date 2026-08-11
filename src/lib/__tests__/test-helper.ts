@@ -1,7 +1,21 @@
 import { ensureInitialized, resetForTest, db } from '../db';
 import { existsSync, unlinkSync } from 'fs';
 
-const DB_PATH = 'erp.sqlite';
+// Tests must run against a dedicated file, never the production database.
+// vitest.config.ts sets DATABASE_PATH=erp.test.sqlite; db.ts reads it at
+// module load, so the value below matches whatever db.ts resolved.
+const DB_PATH = process.env.DATABASE_PATH || 'erp.test.sqlite';
+
+// Hard guard: refuse to delete the production DB file even if DATABASE_PATH
+// was misconfigured. Only a file that is explicitly the test database may be
+// unlinked here.
+const PROD_DB_FILENAMES = ['erp.sqlite'];
+
+function assertSafeTestPath(): void {
+  if (PROD_DB_FILENAMES.some((name) => DB_PATH === name)) {
+    throw new Error(`Refusing to run tests against production DB file "${DB_PATH}". Set DATABASE_PATH to a test-only file (see vitest.config.ts).`);
+  }
+}
 
 // Module-level init promise ensures the DB is initialized only once per worker
 let _initPromise: Promise<void> | null = null;
@@ -23,6 +37,7 @@ function getInitPromise(): Promise<void> {
  * Call this in beforeAll() of each test suite.
  */
 export async function setupTestDatabase(): Promise<void> {
+  assertSafeTestPath();
   resetForTest();
   if (existsSync(DB_PATH)) {
     try { unlinkSync(DB_PATH); } catch { /* ignore */ }
@@ -36,6 +51,7 @@ export async function setupTestDatabase(): Promise<void> {
  * Call this in afterAll() of each test suite.
  */
 export function teardownTestDatabase(): void {
+  assertSafeTestPath();
   if (existsSync(DB_PATH)) {
     try { unlinkSync(DB_PATH); } catch { /* ignore */ }
   }

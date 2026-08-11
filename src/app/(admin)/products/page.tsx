@@ -658,8 +658,8 @@ function ProductsPageContent() {
           {editingProduct ? 'Edit Product' : formData.isCategory ? 'Add Group' : formData.parentId ? 'Add Sub-Item' : 'Add Product'}
         </h3>
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1 custom-scrollbar">
-          {/* Parent + Product Type — first row, 50/50 */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Row 1 — Parent Group | Product Type | Default Warehouse */}
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Parent Group</label>
               <SearchSelect
@@ -702,35 +702,39 @@ function ProductsPageContent() {
                 />
               )}
             </div>
+            {!formData.isCategory && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Default Warehouse</label>
+                <SearchSelect
+                  options={warehouseOptions}
+                  value={formData.defaultWarehouseId}
+                  onChange={(val) => setFormData({ ...formData, defaultWarehouseId: val ? Number(val) : null })}
+                  placeholder="Select warehouse..."
+                  noneLabel="-- Select --"
+                  searchPlaceholder="Search warehouses..."
+                  notFoundLabel="No warehouses found"
+                />
+              </div>
+            )}
           </div>
 
-          {/* Code + Name — Code 25% / Name 75% */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="col-span-1">
+          {/* Row 2 — Code | Name | Product Profile */}
+          <div className="grid grid-cols-3 gap-4">
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Code</label>
               <input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="e.g. PR-001"
                 className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
             </div>
-            <div className="col-span-3">
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name <span className="text-red-400">*</span></label>
               <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder={formData.isCategory ? 'Group name, e.g. Electronics' : 'Product name'}
                 className={`w-full rounded-lg border px-3 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all ${!formData.name.trim() ? 'border-red-300' : 'border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white'}`} />
             </div>
-          </div>
-
-          {!formData.isCategory && (
-            <>
-              {/* Description */}
+            {!formData.isCategory && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
-                <textarea rows={2} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional description"
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
-              </div>
-
-              {/* Profile */}
-              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Product Profile</label>
                 <ProfileSelector
-                  value={formData.profileId}
+                    value={formData.profileId}
                   onChange={(profileId, preset) => {
                     if (preset) {
                       setProfilePreset({
@@ -755,8 +759,12 @@ function ProductsPageContent() {
                     }
                   }}
                 />
-                {profilePreset && (
-                  <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
+              </div>
+            )}
+            </div>
+
+            {profilePreset && (
+              <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
                     <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Profile — {profileCode}</p>
@@ -819,15 +827,15 @@ function ProductsPageContent() {
                               </div>
                             </div>
                           )
-                        })}
+})}
                       </div>
                     )}
-                  </div>
-                )}
-              </div>
+</div>
+              )}
 
-              {/* Prices + UOM */}
-              <div className="grid grid-cols-3 gap-4">
+              {/* Row 3 — UOM | Sales | Purchase | Reorder */}
+              {!formData.isCategory && (
+              <div className="grid grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Unit of Measure</label>
                   <input type="text" value={formData.unitOfMeasure} onChange={e => setFormData({ ...formData, unitOfMeasure: e.target.value })} placeholder="pcs, kg, hrs"
@@ -843,39 +851,13 @@ function ProductsPageContent() {
                   <input type="number" value={formData.purchasePrice || ''} min="0" step="0.01" onChange={e => setFormData({ ...formData, purchasePrice: Number(e.target.value) || 0 })}
                     className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Reorder Point (units)</label>
+                  <input type="number" value={formData.reorderPoint || ''} min="0" onChange={e => setFormData({ ...formData, reorderPoint: Number(e.target.value) || 0 })}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                </div>
               </div>
-
-              {formData.itemType === 'stock' && (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Default Warehouse</label>
-                      <SearchSelect
-                        options={warehouseOptions}
-                        value={formData.defaultWarehouseId}
-                        onChange={(val) => setFormData({ ...formData, defaultWarehouseId: val ? Number(val) : null })}
-                        placeholder="Select warehouse..."
-                        noneLabel="-- Select --"
-                        searchPlaceholder="Search warehouses..."
-                        notFoundLabel="No warehouses found"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Reorder Point (units)</label>
-                      <input type="number" value={formData.reorderPoint || ''} min="0" onChange={e => setFormData({ ...formData, reorderPoint: Number(e.target.value) || 0 })}
-                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
-                    </div>
-                  </div>
-                </>
               )}
-            </>
-          )}
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={formData.isActive} onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
-              className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500" />
-            <span className="text-sm text-gray-700 dark:text-gray-300">Active</span>
-          </label>
 
           {formError && <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2"><p className="text-sm text-red-600 dark:text-red-400">{formError}</p></div>}
 
