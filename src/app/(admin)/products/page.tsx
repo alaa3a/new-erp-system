@@ -658,8 +658,8 @@ function ProductsPageContent() {
           {editingProduct ? 'Edit Product' : formData.isCategory ? 'Add Group' : formData.parentId ? 'Add Sub-Item' : 'Add Product'}
         </h3>
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1 custom-scrollbar">
-          {/* Parent + Product Type — first row, 50/50 */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Parent + Product Type + Active — first row */}
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Parent Group</label>
               <SearchSelect
@@ -702,6 +702,13 @@ function ProductsPageContent() {
                 />
               )}
             </div>
+            <div className="flex items-end pb-0.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={formData.isActive} onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
+                  className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">Active</span>
+              </label>
+            </div>
           </div>
 
           {/* Code + Name — Code 25% / Name 75% */}
@@ -720,14 +727,49 @@ function ProductsPageContent() {
 
           {!formData.isCategory && (
             <>
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
-                <textarea rows={2} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional description"
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
+                  <textarea rows={2} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Optional description"
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Default Warehouse</label>
+                  <SearchSelect
+                    options={warehouseOptions}
+                    value={formData.defaultWarehouseId}
+                    onChange={(val) => setFormData({ ...formData, defaultWarehouseId: val ? Number(val) : null })}
+                    placeholder="Select warehouse..."
+                    noneLabel="-- Select --"
+                    searchPlaceholder="Search warehouses..."
+                    notFoundLabel="No warehouses found"
+                  />
+                </div>
               </div>
 
-              {/* Profile */}
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Unit of Measure</label>
+                  <input type="text" value={formData.unitOfMeasure} onChange={e => setFormData({ ...formData, unitOfMeasure: e.target.value })} placeholder="pcs, kg, hrs"
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Sales Price ($)</label>
+                  <input type="number" value={formData.salesPrice || ''} min="0" step="0.01" onChange={e => setFormData({ ...formData, salesPrice: Number(e.target.value) || 0 })}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Purchase Price ($)</label>
+                  <input type="number" value={formData.purchasePrice || ''} min="0" step="0.01" onChange={e => setFormData({ ...formData, purchasePrice: Number(e.target.value) || 0 })}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Reorder Point (units)</label>
+                  <input type="number" value={formData.reorderPoint || ''} min="0" onChange={e => setFormData({ ...formData, reorderPoint: Number(e.target.value) || 0 })}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
+                </div>
+              </div>
+
               <div>
                 <ProfileSelector
                   value={formData.profileId}
@@ -825,57 +867,8 @@ function ProductsPageContent() {
                   </div>
                 )}
               </div>
-
-              {/* Prices + UOM */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Unit of Measure</label>
-                  <input type="text" value={formData.unitOfMeasure} onChange={e => setFormData({ ...formData, unitOfMeasure: e.target.value })} placeholder="pcs, kg, hrs"
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Sales Price ($)</label>
-                  <input type="number" value={formData.salesPrice || ''} min="0" step="0.01" onChange={e => setFormData({ ...formData, salesPrice: Number(e.target.value) || 0 })}
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Purchase Price ($)</label>
-                  <input type="number" value={formData.purchasePrice || ''} min="0" step="0.01" onChange={e => setFormData({ ...formData, purchasePrice: Number(e.target.value) || 0 })}
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
-                </div>
-              </div>
-
-              {formData.itemType === 'stock' && (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Default Warehouse</label>
-                      <SearchSelect
-                        options={warehouseOptions}
-                        value={formData.defaultWarehouseId}
-                        onChange={(val) => setFormData({ ...formData, defaultWarehouseId: val ? Number(val) : null })}
-                        placeholder="Select warehouse..."
-                        noneLabel="-- Select --"
-                        searchPlaceholder="Search warehouses..."
-                        notFoundLabel="No warehouses found"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Reorder Point (units)</label>
-                      <input type="number" value={formData.reorderPoint || ''} min="0" onChange={e => setFormData({ ...formData, reorderPoint: Number(e.target.value) || 0 })}
-                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all" />
-                    </div>
-                  </div>
-                </>
-              )}
             </>
           )}
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={formData.isActive} onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
-              className="rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-500" />
-            <span className="text-sm text-gray-700 dark:text-gray-300">Active</span>
-          </label>
 
           {formError && <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2"><p className="text-sm text-red-600 dark:text-red-400">{formError}</p></div>}
 
