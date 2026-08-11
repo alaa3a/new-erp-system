@@ -59,3 +59,29 @@ describe('DB-layer UNIQUE safety net', () => {
     ).toThrow(ConflictError);
   });
 });
+
+describe('seed robustness against soft-deleted reserved codes', () => {
+  beforeAll(async () => {
+    await setupTestDatabase();
+  });
+  afterAll(() => {
+    teardownTestDatabase();
+  });
+
+  it('seedInitialData does not crash when all groups are soft-deleted but keep their CAT-* codes', async () => {
+    const { seedInitialData } = await import('../db');
+    // Reproduce the original failure: groupCount (isCategory=1 AND deletedAt IS
+    // NULL) drops to 0, so the group seed re-runs — but the soft-deleted rows
+    // still hold the CAT-* codes via the UNIQUE constraint. A plain INSERT
+    // (pre-fix) crashed initialization on every request.
+    const now = new Date().toISOString();
+    db.prepare('UPDATE product SET deletedAt=? WHERE isCategory=1 AND deletedAt IS NULL').run(now);
+
+    expect(() => seedInitialData()).not.toThrow();
+
+    const dups = db.prepare(
+      "SELECT code, count(1) AS c FROM product WHERE code LIKE 'CAT-%' GROUP BY code HAVING c > 1"
+    ).all() as any[];
+    expect(dups).toHaveLength(0);
+  });
+});

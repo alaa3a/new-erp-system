@@ -1036,7 +1036,7 @@ function ensureSequence(documentType: string, prefix: string, padding = 6): void
   const exists = db.prepare('SELECT id FROM document_sequence WHERE documentType = ?').get(documentType);
   if (!exists) {
     const now = new Date().toISOString();
-    db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 1, ?, ?, ?)').run(documentType, prefix, padding, now, now);
+    db.prepare('INSERT OR IGNORE INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 1, ?, ?, ?)').run(documentType, prefix, padding, now, now);
   }
 }
 
@@ -1088,7 +1088,7 @@ function seedInitialData() {
   const userCount = db.prepare('SELECT count(1) AS count FROM users').get<{ count: number }>()?.count ?? 0;
   if (userCount === 0) {
     const now = new Date().toISOString();
-    db.prepare(`INSERT INTO users (email, passwordHash, firstName, lastName, permissionIds, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1)`).run(
+    db.prepare(`INSERT OR IGNORE INTO users (email, passwordHash, firstName, lastName, permissionIds, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1)`).run(
       'admin@erp.local',
       hashPassword('admin123'),
       'Admin',
@@ -1204,7 +1204,7 @@ function seedInitialData() {
     const vatId = vat?.id || null;
     const vat2 = db.prepare('SELECT id FROM tax_code ORDER BY id LIMIT 1 OFFSET 1').get<{ id: number }>();
     const vat2Id = vat2?.id || null;
-    const pStmt = db.prepare('INSERT INTO product_profile (code, name, description, salesVatCodeId, purchaseVatCodeId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const pStmt = db.prepare('INSERT OR IGNORE INTO product_profile (code, name, description, salesVatCodeId, purchaseVatCodeId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
     const now2 = new Date().toISOString();
     pStmt.run('STD', 'Standard Product', 'Default product with standard tax', vatId, vatId, now2, now2);
     pStmt.run('EXM', 'Tax Exempt', 'Zero-rated product', null, null, now2, now2);
@@ -1240,12 +1240,12 @@ function seedInitialData() {
       ['4', 'Revenue', 'revenue', 0],
       ['5', 'Expenses', 'expense', 0],
     ];
-    const rootStmt = db.prepare('INSERT INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, NULL, ?, 1, ?, ?, 1)');
+    const rootStmt = db.prepare('INSERT OR IGNORE INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, NULL, ?, 1, ?, ?, 1)');
     for (const [code, name, type, sys] of rootAccts) {
       rootStmt.run(code, name, type, sys, now, now);
     }
     // Level 2: Child accounts — editable (isSystemAccount = 0)
-    const acctStmt = db.prepare('INSERT INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, 0, 1, ?, ?, 1)');
+    const acctStmt = db.prepare('INSERT OR IGNORE INTO account (code, name, type, parentId, isSystemAccount, isActive, createdAt, updatedAt, version) VALUES (?, ?, ?, ?, 0, 1, ?, ?, 1)');
     // Under Asset(1): 101-105
     const assets: [string, string, string][] = [
       ['101', 'Cash & Bank', 'asset'],
