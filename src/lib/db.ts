@@ -1385,4 +1385,4 @@ function resetForTest(): void {
   state.inTransaction = false;
 }
 
-export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave, getDbBytes, replaceDatabase, getDbFilePath };
+export { db, ensureDb, initDb, getNextSequence, ensureSequence, sanitizeCategoryCode, ensureCategorySequence, canUser, seedInitialData, ensureInitialized, resetForTest, flushPendingSave, getDbBytes, replaceDatabase, getDbFilePath, uniqueViolationMessage };

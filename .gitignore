@@ -10,6 +10,7 @@ node_modules/
 *.sqlite
 *.sqlite.bak
 *.sqlite.bak-*
+erp.sqlite.seed-overwrite-*
 
 # Logs
 *.log

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { setupTestDatabase, teardownTestDatabase } from './test-helper';
-import { db } from '../db';
+import { db, ensureSequence, uniqueViolationMessage } from '../db';
 import { productRepository } from '../repositories/productRepository';
 import { ConflictError } from '../utils/errors';
 
@@ -83,5 +83,36 @@ describe('seed robustness against soft-deleted reserved codes', () => {
       "SELECT code, count(1) AS c FROM product WHERE code LIKE 'CAT-%' GROUP BY code HAVING c > 1"
     ).all() as any[];
     expect(dups).toHaveLength(0);
+  });
+});
+
+describe('seed idempotency and unique message fallbacks', () => {
+  beforeAll(async () => {
+    await setupTestDatabase();
+  });
+  afterAll(() => {
+    teardownTestDatabase();
+  });
+
+  it('ensureSequence is idempotent when the document type already exists', () => {
+    const now = new Date().toISOString();
+    db.prepare('INSERT INTO document_sequence (documentType, prefix, nextNumber, padding, createdAt, updatedAt) VALUES (?, ?, 5, 6, ?, ?)').run('SEQ-TEST', 'ST-', now, now);
+    expect(() => ensureSequence('SEQ-TEST', 'ST-')).not.toThrow();
+    const rows = db.prepare("SELECT count(1) AS c FROM document_sequence WHERE documentType = 'SEQ-TEST'").get<{ c: number }>();
+    expect(rows?.c).toBe(1);
+  });
+
+  it('uniqueViolationMessage falls back to a generic label for unknown tables', () => {
+    expect(uniqueViolationMessage('UNIQUE constraint failed: mystery_table.customKey')).toContain('record');
+  });
+
+  it('uniqueViolationMessage labels the email field as email address', () => {
+    expect(uniqueViolationMessage('UNIQUE constraint failed: users.email')).toContain('email address');
+  });
+
+  it('uniqueViolationMessage handles composite multi-column messages without undefined', () => {
+    const msg = uniqueViolationMessage('UNIQUE constraint failed: product_warehouse_stock.productId, product_warehouse_stock.warehouseId');
+    expect(msg).toContain('productId');
+    expect(msg).not.toMatch(/undefined/);
   });
 });
