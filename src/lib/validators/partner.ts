@@ -7,7 +7,7 @@ export const createPartnerSchema = z.object({
   name: entityNameSchema,
   type: partnerTypeEnum,
   contactPerson: z.string().max(200).optional().default(''),
-  email: z.string().email('Invalid email').optional().default(''),
+  email: z.union([z.string().email('Invalid email'), z.literal('')]).optional().default(''),
   phone: z.string().max(50).optional().default(''),
   taxId: z.string().max(50).optional().default(''),
   address: optionalString,
