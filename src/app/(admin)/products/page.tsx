@@ -15,6 +15,9 @@ import SearchSelect from '@/components/form/SearchSelect'
 import type { Product, ProductProfile, ItemType, Warehouse, TaxCode, Account, CostCenter } from '@/types/erp'
 
 interface ProfileAccountPreset {
+  code?: string;
+  name?: string;
+  description?: string;
   salesAccountId: number | null;
   purchaseAccountId: number | null;
   inventoryAccountId: number | null;
@@ -210,6 +213,9 @@ function ProductsPageContent() {
       if (json.success) {
         const p = json.data
         setProfilePreset({
+          code: p.code,
+          name: p.name,
+          description: p.description ?? '',
           salesAccountId: p.salesAccountId ?? null,
           purchaseAccountId: p.purchaseAccountId ?? null,
           inventoryAccountId: p.inventoryAccountId ?? null,
@@ -223,9 +229,9 @@ function ProductsPageContent() {
     } catch { /* silent */ }
   }, [])
 
-  const profileCode = profilePreset ? (profiles.find(p => p.id === formData.profileId)?.code ?? '') : ''
-  const profileName = profilePreset ? (profiles.find(p => p.id === formData.profileId)?.name ?? '') : ''
-  const profileDescription = profilePreset ? (profiles.find(p => p.id === formData.profileId)?.description ?? '') : ''
+  const profileCode = profilePreset?.code ?? (profiles.find(p => p.id === formData.profileId)?.code ?? '')
+  const profileName = profilePreset?.name ?? (profiles.find(p => p.id === formData.profileId)?.name ?? '')
+  const profileDescription = profilePreset?.description ?? (profiles.find(p => p.id === formData.profileId)?.description ?? '')
   const profileTableRows: { type: 'tax' | 'account'; label: string; id: number | null }[] = profilePreset ? [
     { type: 'tax', label: 'Tax — Sales', id: formData.vatCodeId },
     { type: 'tax', label: 'Tax — Purchase', id: formData.purchaseVatCodeId },
@@ -738,6 +744,9 @@ function ProductsPageContent() {
                   onChange={(profileId, preset) => {
                     if (preset) {
                       setProfilePreset({
+                        code: preset.code,
+                        name: preset.name,
+                        description: preset.description ?? '',
                         salesAccountId: preset.salesAccountId ?? null,
                         purchaseAccountId: preset.purchaseAccountId ?? null,
                         inventoryAccountId: preset.inventoryAccountId ?? null,
