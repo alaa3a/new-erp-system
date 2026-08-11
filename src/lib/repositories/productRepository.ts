@@ -63,7 +63,9 @@ export const productRepository = {
   },
 
   findByCode(code: string): Product | null {
-    const row = db.prepare('SELECT * FROM product WHERE code = ? AND deletedAt IS NULL').get(code) as any;
+    // No deletedAt filter — soft-deleted rows still hold the UNIQUE code, so
+    // the create/update pre-checks must see them to return a clean 400.
+    const row = db.prepare('SELECT * FROM product WHERE code = ?').get(code) as any;
     return row ? mapRow(row) : null;
   },
 

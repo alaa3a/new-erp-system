@@ -8,6 +8,11 @@ export default defineConfig({
     setupFiles: [],
     testTimeout: 15000,
     fileParallelism: false,
+    env: {
+      // Tests must NEVER touch the production database file.
+      // db.ts reads DATABASE_PATH at module load, so set it before any import.
+      DATABASE_PATH: 'erp.test.sqlite',
+    },
   },
   resolve: {
     alias: {

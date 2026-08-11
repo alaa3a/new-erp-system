@@ -1238,7 +1238,10 @@ function seedInitialData() {
   // create their own tax groups and types (avoids a protected system "VAT"
   // group that cannot be deleted from the UI).
 
-  // Seed product groups (hierarchy folder nodes) so a fresh database starts with a tree
+  // Seed product groups (hierarchy folder nodes) so a fresh database starts with a tree.
+  // Guard per-code: soft-deleted rows still reserve their code via the UNIQUE
+  // constraint, so a restored/used DB may already hold CAT-* codes — inserting
+  // them again would crash initialization (Internal server error on every request).
   const groupCount = db.prepare('SELECT count(1) AS count FROM product WHERE isCategory = 1 AND deletedAt IS NULL').get<{ count: number }>()?.count ?? 0;
   if (groupCount === 0) {
     const now = new Date().toISOString();
@@ -1247,7 +1250,7 @@ function seedInitialData() {
       ['CAT-CLOTH', 'Clothing'],
       ['CAT-SERV', 'Services'],
     ];
-    const groupStmt = db.prepare("INSERT INTO product (code, name, description, itemType, unitOfMeasure, salesPrice, purchasePrice, reorderPoint, isActive, parentId, isCategory, createdAt, updatedAt, version) VALUES (?, ?, ?, 'stock', 'pcs', 0, 0, 0, 1, NULL, 1, ?, ?, 1)");
+    const groupStmt = db.prepare("INSERT OR IGNORE INTO product (code, name, description, itemType, unitOfMeasure, salesPrice, purchasePrice, reorderPoint, isActive, parentId, isCategory, createdAt, updatedAt, version) VALUES (?, ?, ?, 'stock', 'pcs', 0, 0, 0, 1, NULL, 1, ?, ?, 1)");
     for (const [code, name] of groups) {
       groupStmt.run(code, name, '', now, now);
     }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { productProfileRepository } from '@/lib/repositories/productProfileRepository';
-import { handleApiError } from '@/lib/utils/errors';
+import { handleApiError, ValidationError } from '@/lib/utils/errors';
 import { ensureInitialized } from '@/lib/db';
 import { requirePermission } from '@/lib/auth/middleware';
 import { validate, createProductProfileSchema } from '@/lib/validators';
@@ -32,6 +32,10 @@ export async function PUT(
     if (auth instanceof NextResponse) return auth;
     const { id } = await params;
     const body = validate(createProductProfileSchema.partial(), await request.json());
+    const existing = body.code ? productProfileRepository.findByCode(body.code) : null;
+    if (existing && existing.id !== Number(id)) {
+      throw new ValidationError(`Product profile code "${body.code}" is already in use`);
+    }
     const updated = productProfileRepository.update(Number(id), body);
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
